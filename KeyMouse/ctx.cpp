@@ -1,3 +1,4 @@
+#include "stdafx.h"
 #include "ctx.h"
 
 namespace KeyMouse {
