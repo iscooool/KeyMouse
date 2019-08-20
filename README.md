@@ -1,5 +1,5 @@
 # KeyMouse
-**KeyMouse** is program which works like the chrome plugin **vimium**, but is designed for other programs(like windows file browser).
+**KeyMouse** is a program which works like the chrome plugin **vimium**, but is designed for other programs(like windows file browser).
 
 ![demo](https://i.imgur.com/YKKkuIu.gif)
 
