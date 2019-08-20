@@ -30,12 +30,33 @@
     <ClInclude Include="KeyMouse.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="tag.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="def.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="utils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ctx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="KeyMouse.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tag.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ctx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -49,6 +70,9 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="KeyMouse.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Tray.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>
