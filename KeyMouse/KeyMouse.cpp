@@ -180,18 +180,54 @@ BOOL UnregisterTagHotKey(HWND hWnd) {
 
 void EscSelectMode(HWND hWnd) {
 
-    HWND handle = GetForegroundWindow();
-    RedrawWindow(handle, NULL, NULL, 
-                 RDW_INVALIDATE | RDW_ALLCHILDREN);
-    UnregisterHotKey(hWnd, CLEANTAG);
-    UnregisterTagHotKey(hWnd);
+    //HWND handle = GetForegroundWindow();
     // Get current context.
     KeyMouse::Context *pCtx = 
         reinterpret_cast<KeyMouse::Context *>(
                 GetWindowLongPtr(hWnd, 0)
                 );
+    HWND handle = pCtx->GetTransWindow();
+    // Enable window drawing.
+    LockWindowUpdate(NULL);
+    RedrawWindow(handle, NULL, NULL, 
+                 RDW_INVALIDATE | RDW_ALLCHILDREN);
+    DestroyWindow(handle);
+    UnregisterHotKey(hWnd, CLEANTAG);
+    UnregisterTagHotKey(hWnd);
     pCtx->SetCurrentTag(string(TEXT("")));
     pCtx->SetMaxTagLen(0);
+}
+void SingleClick(int x, int y)
+{
+	const double XSCALEFACTOR = 65535 / (GetSystemMetrics(SM_CXSCREEN) - 1);
+	const double YSCALEFACTOR = 65535 / (GetSystemMetrics(SM_CYSCREEN) - 1);
+
+	POINT cursorPos;
+	GetCursorPos(&cursorPos);
+
+	double cx = cursorPos.x * XSCALEFACTOR;
+	double cy = cursorPos.y * YSCALEFACTOR;
+
+	double nx = x * XSCALEFACTOR;
+	double ny = y * YSCALEFACTOR;
+
+	INPUT Input = { 0 };
+	Input.type = INPUT_MOUSE;
+
+	Input.mi.dx = (LONG)nx;
+	Input.mi.dy = (LONG)ny;
+
+	Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP;
+
+	SendInput(1, &Input, sizeof(INPUT));
+	
+
+	Input.mi.dx = (LONG)cx;
+	Input.mi.dy = (LONG)cy;
+
+	Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+
+	SendInput(1, &Input, sizeof(INPUT));
 }
 
 void InvokeElement(CComPtr<IUIAutomationElement> &pElement) {
@@ -209,8 +245,15 @@ void InvokeElement(CComPtr<IUIAutomationElement> &pElement) {
                     );
             pInvoke->Select();
 
-        }
-        else {
+        } else if(iControlType == UIA_PaneControlTypeId) {
+            POINT point;
+            BOOL bClickable;
+            pElement->GetClickablePoint(&point, &bClickable);
+            if(bClickable) {
+                SingleClick(point.x, point.y);
+
+            }
+        } else {
             CComPtr<IUIAutomationInvokePattern> pInvoke;
             hr = pElement->GetCurrentPatternAs(
                     UIA_InvokePatternId,
@@ -381,7 +424,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                                     break;
 
                                 HWND handle = GetForegroundWindow();
-                                EnumConditionedElement(handle, hWnd);
+                                EnumConditionedElement(handle, hWnd, hInst);
                                 RegisterHotKey(hWnd, CLEANTAG, 0, VK_ESCAPE);
                                 RegisterTagHotKey(hWnd);
 

@@ -10,6 +10,7 @@ private:
     size_t max_tag_len_;
     std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>> tag_map_;
     bool enable_state_;
+    HWND transparent_window_;
 
 public:
     Context ();
@@ -23,5 +24,7 @@ public:
         GetTagMap() const;
     void SetEnableState(const bool flag);
     const bool &GetEnableState() const;
+    void SetTransWindow(const HWND hWnd);
+    const HWND &GetTransWindow() const;
 };
 }

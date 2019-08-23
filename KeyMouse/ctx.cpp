@@ -46,4 +46,12 @@ const bool &Context::GetEnableState() const {
     return enable_state_;
 }
 
+void Context::SetTransWindow(const HWND hWnd) {
+    transparent_window_ = hWnd;
+}
+
+const HWND &Context::GetTransWindow() const {
+    return transparent_window_;
+}
+
 }
