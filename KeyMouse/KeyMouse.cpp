@@ -236,7 +236,8 @@ void InvokeElement(CComPtr<IUIAutomationElement> &pElement) {
         HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
         if(iControlType == UIA_TabItemControlTypeId ||
-           iControlType == UIA_TreeItemControlTypeId) {
+           iControlType == UIA_TreeItemControlTypeId ||
+		   iControlType == UIA_ButtonControlTypeId) {
 
             // Sometimes the ClickablePoint is not actually clickable, but
             // bClickable equals 1. So comment the code.
@@ -259,7 +260,14 @@ void InvokeElement(CComPtr<IUIAutomationElement> &pElement) {
                     __uuidof(IUIAutomationInvokePattern),
                     reinterpret_cast<void **>(&pInvoke)
                     );
-            pInvoke->Invoke();
+			if(pInvoke)
+				pInvoke->Invoke();
+			else {
+				RECT Rect;
+				pElement->get_CachedBoundingRectangle(&Rect);
+				SingleClick((Rect.left + Rect.right) / 2,
+					(Rect.top + Rect.bottom) / 2);
+			}
         }
     }
     catch (_com_error err) {
