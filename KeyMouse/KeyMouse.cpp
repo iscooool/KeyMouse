@@ -107,7 +107,7 @@ void InitTray(HINSTANCE hInstance, HWND hwnd) {
    
 BOOL RegisterAllHotKey(HWND hWnd) {
     return (
-        RegisterHotKey(hWnd, SHOWTAG, MOD_SHIFT | MOD_NOREPEAT, 0x46 /* F */) &&
+        RegisterHotKey(hWnd, SHOWTAG, MOD_ALT | MOD_NOREPEAT, VK_OEM_1 /* ; */) &&
         RegisterHotKey(hWnd, TOGGLEENABLE, 0, VK_F11)
         );
 }
@@ -233,29 +233,28 @@ void SingleClick(int x, int y)
 void InvokeElement(CComPtr<IUIAutomationElement> &pElement) {
     try {
         CONTROLTYPEID iControlType;
-        HRESULT hr = pElement->get_CurrentControlType(&iControlType); 
+        HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
-        if(iControlType == UIA_TreeItemControlTypeId ||
-           iControlType == UIA_TabItemControlTypeId) {
-            CComPtr<IUIAutomationSelectionItemPattern> pInvoke;
-            hr = pElement->GetCurrentPatternAs(
-                    UIA_SelectionItemPatternId,
-                    __uuidof(IUIAutomationSelectionItemPattern),
-                    reinterpret_cast<void **>(&pInvoke)
-                    );
-            pInvoke->Select();
+        if(iControlType == UIA_TabItemControlTypeId ||
+           iControlType == UIA_TreeItemControlTypeId) {
 
-        } else if(iControlType == UIA_PaneControlTypeId) {
-            POINT point;
-            BOOL bClickable;
-            pElement->GetClickablePoint(&point, &bClickable);
-            if(bClickable) {
-                SingleClick(point.x, point.y);
-
-            }
+            // Sometimes the ClickablePoint is not actually clickable, but
+            // bClickable equals 1. So comment the code.
+            
+            //POINT point;
+            //BOOL bClickable;
+            //pElement->GetClickablePoint(&point, &bClickable);
+            //if(bClickable) {
+                //SingleClick(point.x, point.y);
+            //} else {
+                RECT Rect;
+                pElement->get_CachedBoundingRectangle(&Rect);
+                SingleClick((Rect.left + Rect.right) / 2, 
+                        (Rect.top + Rect.bottom) /2);
+            //}
         } else {
             CComPtr<IUIAutomationInvokePattern> pInvoke;
-            hr = pElement->GetCurrentPatternAs(
+            hr = pElement->GetCachedPatternAs(
                     UIA_InvokePatternId,
                     __uuidof(IUIAutomationInvokePattern),
                     reinterpret_cast<void **>(&pInvoke)
@@ -393,8 +392,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                             } else {
                                 pCtx->SetEnableState(true);
                                 RegisterHotKey(hWnd, SHOWTAG, 
-                                        MOD_SHIFT | MOD_NOREPEAT, 
-                                        0x46 /* F */); 
+                                        MOD_ALT | MOD_NOREPEAT, 
+                                        VK_OEM_1 /* ; */); 
                             }
 
                         }
@@ -409,11 +408,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
          {
              switch(LOWORD(lParam))
              {
-                 case MOD_SHIFT:
+                 case MOD_ALT:
                      {
                      switch(HIWORD(lParam))
                      {
-                         case 0x46 /* F */:
+                         case VK_OEM_1:
                              {
                                 // Get current context.
                                 KeyMouse::Context *pCtx = 
@@ -457,8 +456,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                                 } else {
                                     pCtx->SetEnableState(true);
                                     RegisterHotKey(hWnd, SHOWTAG, 
-                                            MOD_SHIFT | MOD_NOREPEAT, 
-                                            0x46 /* F */); 
+                                            MOD_ALT | MOD_NOREPEAT, 
+                                            VK_OEM_1 /* ; */); 
                                 }
                              }
                              break;

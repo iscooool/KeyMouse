@@ -70,26 +70,21 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 		HRESULT hr = pAutomation->ElementFromHandle(handle, &pElement);
 		throw_if_fail(hr);
 
-		BSTR pStr;
-		pElement->get_CurrentName(&pStr);
-		cout << pStr << std::endl;
-
 		CComPtr<IUIAutomationElementArray> pElementArray;
 		// Define the condition by pTotalCondition to find all desired items.
-        SAFEARRAY *pConditionVector = SafeArrayCreateVector(
-                VT_UNKNOWN,
-                0,
-                CONDITION_NUM
-                );
         std::vector<PROPERTYID> vPropertyId = {
             UIA_ListItemControlTypeId,
             UIA_ButtonControlTypeId,
             UIA_TreeItemControlTypeId,
             UIA_TabItemControlTypeId,
             UIA_HyperlinkControlTypeId,
-			UIA_WindowControlTypeId,
-            UIA_PaneControlTypeId
+			UIA_SplitButtonControlTypeId
         };
+        SAFEARRAY *pConditionVector = SafeArrayCreateVector(
+                VT_UNKNOWN,
+                0,
+                vPropertyId.size()
+                );
 
         LONG i = 0;
         for (PROPERTYID PropertyId : vPropertyId) {
@@ -114,8 +109,26 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
                 &pTotalCondition
                 );
         throw_if_fail(hr);
-		hr = pElement->FindAll(TreeScope_Descendants, pTotalCondition,
-			&pElementArray);
+
+        CComPtr<IUIAutomationCacheRequest> pCacheRequest;
+        hr = pAutomation->CreateCacheRequest(&pCacheRequest);
+        throw_if_fail(hr);
+
+        //hr = pCacheRequest->AddPattern(UIA_SelectionItemPatternId);
+        //throw_if_fail(hr);
+        hr = pCacheRequest->AddPattern(UIA_InvokePatternId);
+        throw_if_fail(hr);
+        hr = pCacheRequest->AddProperty(UIA_BoundingRectanglePropertyId);
+        throw_if_fail(hr);
+        hr = pCacheRequest->AddProperty(UIA_ControlTypePropertyId);
+        throw_if_fail(hr);
+
+		//hr = pElement->FindAll(TreeScope_Descendants, pTotalCondition,
+			//&pElementArray);
+		hr = pElement->FindAllBuildCache(TreeScope_Descendants, 
+                pTotalCondition,
+                pCacheRequest,
+			    &pElementArray);
 		throw_if_fail(hr);
 
         hr = SafeArrayDestroy(pConditionVector);
@@ -147,12 +160,11 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 			CComPtr<IUIAutomationElement> pTempElement;
 			pElementArray->GetElement(i, &pTempElement);
 			RECT Rect;
-			pTempElement->get_CurrentBoundingRectangle(&Rect);
+			pTempElement->get_CachedBoundingRectangle(&Rect);
 			string szTemp = TagQueue.front();
             TagQueue.pop();
             // print the tag on the screen.
 			const TCHAR *psText = szTemp.c_str();
-            //DrawText(hdc, psText, _tcslen(psText), &Rect, DT_SINGLELINE | DT_NOCLIP);
             POINT point;
             point.x = Rect.left;
             point.y = Rect.top;

@@ -3,7 +3,6 @@
 #include "tag.h"
 #include "ctx.h"
 
-#define CONDITION_NUM 7
 
 extern IUIAutomation *pAutomation;
 inline void throw_if_fail(HRESULT hr);
