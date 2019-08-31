@@ -102,13 +102,42 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 
             ++i;
         }
-        CComPtr<IUIAutomationCondition> pTotalCondition;
+        CComPtr<IUIAutomationCondition> pTotalOrCondition;
         
         hr = pAutomation->CreateOrConditionFromArray(
                 pConditionVector,
-                &pTotalCondition
+                &pTotalOrCondition
                 );
         throw_if_fail(hr);
+
+        CComPtr<IUIAutomationCondition> pIsEnabledCondition;
+        VARIANT Val;
+        Val.vt = VT_BOOL;
+        Val.boolVal = VARIANT_TRUE;
+        hr = pAutomation->CreatePropertyCondition(UIA_IsEnabledPropertyId,
+            Val,
+            &pIsEnabledCondition);
+        throw_if_fail(hr);
+        CComPtr<IUIAutomationCondition> pIsOffscreenCondition;
+        Val.vt = VT_BOOL;
+        Val.boolVal = VARIANT_TRUE;
+        hr = pAutomation->CreatePropertyCondition(UIA_IsOffscreenPropertyId,
+            Val,
+            &pIsOffscreenCondition);
+        throw_if_fail(hr);
+
+        CComPtr<IUIAutomationCondition> pBoolCondition;
+        hr = pAutomation->CreateAndCondition(pIsEnabledCondition,
+                pIsOffscreenCondition,
+                &pBoolCondition
+                );
+        throw_if_fail(hr);
+
+        CComPtr<IUIAutomationCondition> pTotalCondition;
+        hr = pAutomation->CreateAndCondition(pIsEnabledCondition,
+                pTotalOrCondition,
+                &pTotalCondition
+                );
 
         CComPtr<IUIAutomationCacheRequest> pCacheRequest;
         hr = pAutomation->CreateCacheRequest(&pCacheRequest);
@@ -123,62 +152,90 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
         hr = pCacheRequest->AddProperty(UIA_ControlTypePropertyId);
         throw_if_fail(hr);
 
-		//hr = pElement->FindAll(TreeScope_Descendants, pTotalCondition,
-			//&pElementArray);
-		hr = pElement->FindAllBuildCache(TreeScope_Descendants, 
-                pTotalCondition,
+        CComPtr<IUIAutomationCondition> pTrueCondition;
+        hr = pAutomation->CreateTrueCondition(&pTrueCondition);
+        throw_if_fail(hr);
+		CComPtr<IUIAutomationElementArray> pChildrenElementArray;
+        // Find all children of focus window for multi-threads task
+        // partition.
+        hr = pElement->FindAllBuildCache(TreeScope_Children, 
+                pTrueCondition,
                 pCacheRequest,
-			    &pElementArray);
-		throw_if_fail(hr);
+                &pChildrenElementArray);
+        throw_if_fail(hr);
+        
+        int nChildrenNum = 0;
+        if(pChildrenElementArray != nullptr) {
+            hr = pChildrenElementArray->get_Length(&nChildrenNum);
+            throw_if_fail(hr);
+        }
+        std::unique_ptr<std::thread[]> pThread(new std::thread[nChildrenNum]);
+        std::unique_ptr<CComPtr<IUIAutomationElementArray>[]> 
+            pThreadElementArray(new CComPtr<IUIAutomationElementArray>[nChildrenNum]);
+        // Task assignment for multi-threads.
+        for(int j = 0; j < nChildrenNum; ++j) {
+            IUIAutomationElement *pTempElement;
+            pChildrenElementArray->GetElement(j, &pTempElement);
+            pThread[j] = std::thread(&IUIAutomationElement::FindAllBuildCache,
+                    pTempElement,
+                    TreeScope_Subtree,
+                    pTotalCondition,
+                    pCacheRequest,
+                    &pThreadElementArray[j]
+                    );
+        }
+        int nTotalLength = 0;
+        for(int j = 0; j < nChildrenNum; ++j) {
+            pThread[j].join();
+            int length;
+            hr = pThreadElementArray[j]->get_Length(&length);
+            nTotalLength += length;
+            throw_if_fail(hr);
+
+        }
 
         hr = SafeArrayDestroy(pConditionVector);
         throw_if_fail(hr);
-
-		std::unique_ptr<int> pLength(new int(0));
-        if(pElementArray != nullptr) {
-            hr = pElementArray->get_Length(pLength.get());
-            throw_if_fail(hr);
-        }
 
         std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>
             TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
 
 		KeyMouse::TagCreator TC;
-        std::queue<string> TagQueue = TC.AllocTag(*pLength);
+        std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
         // the last one of the queue must be the longest one.
         pCtx->SetMaxTagLen(TagQueue.back().length());
 
-        
-
-
 		HDC hdc;
-		//hdc = GetDC(handle);
         hdc = GetDCEx(hTransWindow, NULL, DCX_LOCKWINDOWUPDATE);
-		// Traverse the items of ListControlType.
-		for (int i = 0; i < *pLength; ++i) {
-			//IUIAutomationElement *pTempElement;
-			CComPtr<IUIAutomationElement> pTempElement;
-			pElementArray->GetElement(i, &pTempElement);
-			RECT Rect;
-			pTempElement->get_CachedBoundingRectangle(&Rect);
-			string szTemp = TagQueue.front();
-            TagQueue.pop();
-            // print the tag on the screen.
-			const TCHAR *psText = szTemp.c_str();
-            POINT point;
-            point.x = Rect.left;
-            point.y = Rect.top;
-            //ScreenToClient(handle, &point);
+		// Traverse the items of ElementArray.
+        for(int i = 0; i < nChildrenNum; ++i) {
+            int length;
+            hr = pThreadElementArray[i]->get_Length(&length);
+            throw_if_fail(hr);
+            IUIAutomationElementArray *pElementArray = pThreadElementArray[i];
+            for (int j = 0; j < length; ++j) {
+                CComPtr<IUIAutomationElement> pTempElement;
+                pElementArray->GetElement(j, &pTempElement);
+                RECT Rect;
+                pTempElement->get_CachedBoundingRectangle(&Rect);
+                string szTemp = TagQueue.front();
+                TagQueue.pop();
+                // print the tag on the screen.
+                const TCHAR *psText = szTemp.c_str();
+                POINT point;
+                point.x = Rect.left;
+                point.y = Rect.top;
 
-            BOOL result = TextOut(hdc,
-                    point.x,
-                    point.y,
-                    psText, _tcslen(psText));
-            // insert the tag and Element into the keymap.
-            TagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
-                         szTemp, pTempElement)); 
+                BOOL result = TextOut(hdc,
+                        point.x,
+                        point.y,
+                        psText, _tcslen(psText));
+                // insert the tag and Element into the keymap.
+                TagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
+                             szTemp, pTempElement)); 
 
-		}
+            }
+        }
         pCtx->SetTagMap(TagMap);
         LockWindowUpdate(handle);
 		ReleaseDC(hTransWindow, hdc);

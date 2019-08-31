@@ -302,7 +302,8 @@ HWND InitInstance(HINSTANCE hInstance, int nCmdShow)
 
     RegisterAllHotKey(hWnd);
 	// Initialize COM before using UI Automation.
-	HRESULT hr = CoInitialize(nullptr);
+	//HRESULT hr = CoInitialize(nullptr);
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 	hr = InitializeUIAutomation(&pAutomation);
     return hWnd;
 }
