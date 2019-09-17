@@ -19,6 +19,11 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 void                InitTray(HINSTANCE hInstance, HWND hwnd);
 BOOL                UnregisterAllHotKey(HWND hWnd);
 BOOL                RegisterAllHotKey(HWND hWnd);
+void                InvokeElement(CComPtr<IUIAutomationElement> &pElement);
+void                ScrollElement(CComPtr<IUIAutomationElement> &pElement, 
+                    ScrollAmount amount);
+BOOL                RegisterTagHotKey(HWND hWnd);
+BOOL                UnregisterTagHotKey(HWND hWnd);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -108,7 +113,9 @@ void InitTray(HINSTANCE hInstance, HWND hwnd) {
 BOOL RegisterAllHotKey(HWND hWnd) {
     return (
         RegisterHotKey(hWnd, SHOWTAG, MOD_ALT | MOD_NOREPEAT, VK_OEM_1 /* ; */) &&
-        RegisterHotKey(hWnd, TOGGLEENABLE, 0, VK_F11)
+        RegisterHotKey(hWnd, TOGGLEENABLE, 0, VK_F11) &&
+        RegisterHotKey(hWnd, SCROLLDOWN, 0, 0x4A /* J */) &&
+        RegisterHotKey(hWnd, SCROLLUP, 0, 0x4B /* K */) 
         );
 }
 BOOL RegisterTagHotKey(HWND hWnd) {
@@ -122,8 +129,8 @@ BOOL RegisterTagHotKey(HWND hWnd) {
         RegisterHotKey(hWnd, HOTKEY_G, 0, 0x47 /* G */) && 
         RegisterHotKey(hWnd, HOTKEY_H, 0, 0x48 /* H */) && 
         RegisterHotKey(hWnd, HOTKEY_I, 0, 0x49 /* I */) && 
-        RegisterHotKey(hWnd, HOTKEY_J, 0, 0x4A /* J */) && 
-        RegisterHotKey(hWnd, HOTKEY_K, 0, 0x4B /* K */) && 
+        //RegisterHotKey(hWnd, HOTKEY_J, 0, 0x4A /* J */) && 
+        //RegisterHotKey(hWnd, HOTKEY_K, 0, 0x4B /* K */) && 
         RegisterHotKey(hWnd, HOTKEY_L, 0, 0x4C /* L */) && 
         RegisterHotKey(hWnd, HOTKEY_M, 0, 0x4D /* M */) && 
         RegisterHotKey(hWnd, HOTKEY_N, 0, 0x4E /* N */) && 
@@ -144,7 +151,9 @@ BOOL RegisterTagHotKey(HWND hWnd) {
 BOOL UnregisterAllHotKey(HWND hWnd) {
     return (
         UnregisterHotKey(hWnd, SHOWTAG) &&
-        UnregisterHotKey(hWnd, TOGGLEENABLE)
+        UnregisterHotKey(hWnd, TOGGLEENABLE) &&
+        UnregisterHotKey(hWnd, SCROLLDOWN) &&
+        UnregisterHotKey(hWnd, SCROLLUP)
         );
 }
 BOOL UnregisterTagHotKey(HWND hWnd) {
@@ -158,8 +167,8 @@ BOOL UnregisterTagHotKey(HWND hWnd) {
         UnregisterHotKey(hWnd, HOTKEY_G) && 
         UnregisterHotKey(hWnd, HOTKEY_H) && 
         UnregisterHotKey(hWnd, HOTKEY_I) && 
-        UnregisterHotKey(hWnd, HOTKEY_J) && 
-        UnregisterHotKey(hWnd, HOTKEY_K) && 
+        //UnregisterHotKey(hWnd, HOTKEY_J) && 
+        //UnregisterHotKey(hWnd, HOTKEY_K) && 
         UnregisterHotKey(hWnd, HOTKEY_L) && 
         UnregisterHotKey(hWnd, HOTKEY_M) && 
         UnregisterHotKey(hWnd, HOTKEY_N) && 
@@ -196,6 +205,69 @@ void EscSelectMode(HWND hWnd) {
     UnregisterTagHotKey(hWnd);
     pCtx->SetCurrentTag(string(TEXT("")));
     pCtx->SetMaxTagLen(0);
+    pCtx->SetMode(KeyMouse::Context::NORMAL_MODE);
+}
+
+void SelectModeHandle(HWND hWnd, WORD VirtualKey) {
+    // Get current context.
+    KeyMouse::Context *pCtx = 
+        reinterpret_cast<KeyMouse::Context *>(
+                GetWindowLongPtr(hWnd, 0)
+                );
+    // If the VIrtualKey is out of our expectation.
+    // i.e. VirtualKey is not in A - Z.
+    if(VirtualKey < 0x41 || VirtualKey > 0x5A)
+        return;
+    
+    TCHAR cInputChar = MapVirtualKey(VirtualKey, MAPVK_VK_TO_CHAR);
+    size_t iMaxTagLen = pCtx->GetMaxTagLen();
+    string szTag = pCtx->GetCurrentTag();
+    const std::unique_ptr<
+        std::map<string, CComPtr<IUIAutomationElement>>> 
+        &pTagMap = pCtx->GetTagMap();
+
+    szTag.append(string(1, cInputChar));
+    pCtx->SetCurrentTag(szTag);
+    if(pTagMap->find(szTag) != pTagMap->end()) {
+        //MessageBox(nullptr, TEXT("test"), 
+                //TEXT("contains"),  MB_OK);
+        CComPtr<IUIAutomationElement> pElement =
+            (*pTagMap)[szTag];
+        InvokeElement(pElement);
+
+        EscSelectMode(hWnd);
+    }
+    if(iMaxTagLen <= szTag.length())
+        EscSelectMode(hWnd);
+}
+
+void NormalModeHandle(HWND hWnd, WORD VirtualKey) {
+    switch (VirtualKey) {
+        case KM_SCROLLUP:
+        case KM_SCROLLDOWN:
+            {
+                GUITHREADINFO gti;
+                gti.cbSize = sizeof(GUITHREADINFO);
+                GetGUIThreadInfo(NULL, &gti);
+                HWND hWindowToScroll = gti.hwndFocus;
+				RECT r;
+				GetClientRect(hWnd, &r);
+                int iDirection = 0;
+                if(VirtualKey == KM_SCROLLDOWN)
+                    iDirection = -1;
+                else if (VirtualKey == KM_SCROLLUP)
+                    iDirection = 1;
+                
+				SendMessage(hWindowToScroll, WM_MOUSEWHEEL, 
+                        MAKEWPARAM(0, WHEEL_DELTA * iDirection), 
+                        MAKELPARAM(r.right / 2, r.bottom / 2));
+
+            }
+            break;
+        default:
+            {
+            }
+    }
 }
 void SingleClick(int x, int y)
 {
@@ -274,6 +346,50 @@ void InvokeElement(CComPtr<IUIAutomationElement> &pElement) {
     }
 
 }
+// to avoid conflict when facus on text edit field.
+void EditInputProxy(HWND hWnd, WORD VirtualKey) {
+    UnregisterHotKey(hWnd, SCROLLDOWN);
+    UnregisterHotKey(hWnd, SCROLLUP);
+    INPUT ip;
+    ip.type = INPUT_KEYBOARD;
+    ip.ki.wScan = 0;
+    ip.ki.time = 0;
+    ip.ki.dwExtraInfo = 0;
+    ip.ki.wVk = VirtualKey;
+    ip.ki.dwFlags = 0;                   //Prepares key down
+    SendInput(1, &ip, sizeof(INPUT));    //Key down
+    ip.ki.dwFlags = KEYEVENTF_KEYUP;     //Prepares key up
+    SendInput(1, &ip, sizeof(INPUT));    //Key up
+    RegisterHotKey(hWnd, SCROLLDOWN, 0, 0x4A /* J */);
+    RegisterHotKey(hWnd, SCROLLUP, 0, 0x4B /* K */); 
+}
+
+// TODO: unused. delete it later.
+void ScrollElement(CComPtr<IUIAutomationElement> &pElement, ScrollAmount amount) {
+    try {
+        CComPtr<IUIAutomationScrollPattern> pScroll;
+        HRESULT hr = pElement->GetCurrentPatternAs(
+                UIA_ScrollPatternId,
+                __uuidof(IUIAutomationScrollPattern),
+                reinterpret_cast<void **>(&pScroll)
+                );
+        if(pScroll) {
+            BOOL bVScrollable;
+            BOOL bHScrollable;    
+            pScroll->get_CurrentVerticallyScrollable(&bVScrollable);
+            pScroll->get_CurrentHorizontallyScrollable(&bHScrollable);
+            if(bVScrollable)
+                pScroll->Scroll(ScrollAmount_NoAmount, amount);
+            else if(bHScrollable) {
+                pScroll->Scroll(amount, ScrollAmount_NoAmount);
+            }
+                
+        }
+    }
+    catch (_com_error err) {
+    }
+
+}
 //
 //   FUNCTION: InitInstance(HINSTANCE, int)
 //
@@ -320,6 +436,12 @@ HWND InitInstance(HINSTANCE hInstance, int nCmdShow)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    // Get current context.
+    KeyMouse::Context *pCtx = 
+        reinterpret_cast<KeyMouse::Context *>(
+                GetWindowLongPtr(hWnd, 0)
+                );
+    
     switch (message)
     {
     case WM_COMMAND:
@@ -339,18 +461,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
         }
         break;
-    case WM_TRAY:
+    case WM_TRAY:   // display tray menu.
         {
             int lmId = LOWORD(lParam);
             switch(lmId)
             {
                 case WM_RBUTTONDOWN:
                     {
-                        // Get current context.
-                        KeyMouse::Context *pCtx = 
-                            reinterpret_cast<KeyMouse::Context *>(
-                                    GetWindowLongPtr(hWnd, 0)
-                                    );
                         bool EnableState = pCtx->GetEnableState();
                         UINT fState;
                         if(EnableState)
@@ -412,7 +529,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
         }
         break;
-
     case WM_HOTKEY:
          {
              switch(LOWORD(lParam))
@@ -421,16 +537,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                      {
                      switch(HIWORD(lParam))
                      {
-                         case VK_OEM_1:
+                         case VK_OEM_1: // enter selcet mode.
                              {
-                                // Get current context.
-                                KeyMouse::Context *pCtx = 
-                                    reinterpret_cast<KeyMouse::Context *>(
-                                            GetWindowLongPtr(hWnd, 0)
-                                            );
                                 if(!pCtx->GetEnableState())
                                     break;
 
+                                pCtx->SetMode(KeyMouse::Context::SELECT_MODE);
                                 HWND handle = GetForegroundWindow();
                                 EnumConditionedElement(handle, hWnd, hInst);
                                 RegisterHotKey(hWnd, CLEANTAG, 0, VK_ESCAPE);
@@ -449,60 +561,42 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                          case VK_ESCAPE:
                              {
                                  EscSelectMode(hWnd);
+                                 pCtx->SetMode(KeyMouse::Context::NORMAL_MODE);
                              }
                              break;
-                         case VK_F11:
+                         case VK_F11:   //enable or disable program.
                              {
-                                // Get current context.
-                                KeyMouse::Context *pCtx = 
-                                    reinterpret_cast<KeyMouse::Context *>(
-                                            GetWindowLongPtr(hWnd, 0)
-                                            );
                                 bool EnableState = pCtx->GetEnableState();
                                 if(EnableState) {
                                     pCtx->SetEnableState(false);
                                     UnregisterHotKey(hWnd, SHOWTAG);
+                                    UnregisterHotKey(hWnd, SCROLLDOWN);
+                                    UnregisterHotKey(hWnd, SCROLLUP);
                                 } else {
                                     pCtx->SetEnableState(true);
                                     RegisterHotKey(hWnd, SHOWTAG, 
                                             MOD_ALT | MOD_NOREPEAT, 
                                             VK_OEM_1 /* ; */); 
+                                    RegisterHotKey(hWnd, SCROLLDOWN, 0, 0x4A /* J */);
+                                    RegisterHotKey(hWnd, SCROLLUP, 0, 0x4B /* K */); 
                                 }
                              }
                              break;
-                         default:
+                         default:   // for entering tags in select mode.
                              {
-                                // If the VIrtualKey is out of our expection.
-                                // i.e. VirtualKey is not in A - Z.
-                                if(VirtualKey < 0x41 || VirtualKey > 0x5A)
+                                if(isFocusOnEdit()) {
+                                    EditInputProxy(hWnd, VirtualKey);
                                     break;
-                                
-                                TCHAR cInputChar = MapVirtualKey(VirtualKey,
-                                                    MAPVK_VK_TO_CHAR);
-                                // Get current context.
-                                KeyMouse::Context *pCtx = 
-                                    reinterpret_cast<KeyMouse::Context *>(
-                                            GetWindowLongPtr(hWnd, 0)
-                                            );
-                                size_t iMaxTagLen = pCtx->GetMaxTagLen();
-                                string szTag = pCtx->GetCurrentTag();
-                                const std::unique_ptr<
-                                    std::map<string, CComPtr<IUIAutomationElement>>
-                                    > &pTagMap = pCtx->GetTagMap();
-
-                                szTag.append(string(1, cInputChar));
-                                pCtx->SetCurrentTag(szTag);
-                                if(pTagMap->find(szTag) != pTagMap->end()) {
-                                    //MessageBox(nullptr, TEXT("test"), 
-                                            //TEXT("contains"),  MB_OK);
-                                    CComPtr<IUIAutomationElement> pElement =
-                                        (*pTagMap)[szTag];
-                                    InvokeElement(pElement);
-
-                                    EscSelectMode(hWnd);
+                                } else {
                                 }
-                                if(iMaxTagLen <= szTag.length())
-                                    EscSelectMode(hWnd);
+                                auto mode = pCtx->GetMode();
+                                if(mode == KeyMouse::Context::SELECT_MODE) {
+                                    SelectModeHandle(hWnd, VirtualKey);
+                                }
+                                else if ( mode == KeyMouse::Context::NORMAL_MODE) {
+									HWND handle = GetForegroundWindow();
+                                    NormalModeHandle(handle, VirtualKey);
+                                }
 
                              }
                      }

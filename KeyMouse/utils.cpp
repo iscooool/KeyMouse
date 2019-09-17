@@ -56,6 +56,7 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMaskWindow)
 }
 BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 	try {
+        DWORD start_time = GetTickCount();
         // Create Transparent window.
         HWND hTransWindow = CreateTransparentWindow(hInst, handle);
 
@@ -78,7 +79,8 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
             UIA_TreeItemControlTypeId,
             UIA_TabItemControlTypeId,
             UIA_HyperlinkControlTypeId,
-			UIA_SplitButtonControlTypeId
+			UIA_SplitButtonControlTypeId,
+            UIA_ScrollBarControlTypeId
         };
         SAFEARRAY *pConditionVector = SafeArrayCreateVector(
                 VT_UNKNOWN,
@@ -145,6 +147,8 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 
         //hr = pCacheRequest->AddPattern(UIA_SelectionItemPatternId);
         //throw_if_fail(hr);
+        hr = pCacheRequest->AddPattern(UIA_ScrollPatternId);
+        throw_if_fail(hr);
         hr = pCacheRequest->AddPattern(UIA_InvokePatternId);
         throw_if_fail(hr);
         hr = pCacheRequest->AddProperty(UIA_BoundingRectanglePropertyId);
@@ -199,11 +203,16 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 
         std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>
             TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
+        std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>>
+            ScrollVec(new std::vector<CComPtr<IUIAutomationElement>>);
 
 		KeyMouse::TagCreator TC;
         std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
         // the last one of the queue must be the longest one.
         pCtx->SetMaxTagLen(TagQueue.back().length());
+        DWORD end_time = GetTickCount();
+        DWORD total_time = end_time - start_time;
+        cout<<total_time<<std::endl;
 
 		HDC hdc;
         hdc = GetDCEx(hTransWindow, NULL, DCX_LOCKWINDOWUPDATE);
@@ -236,6 +245,7 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 
             }
         }
+        pCtx->SetScrollVec(ScrollVec);
         pCtx->SetTagMap(TagMap);
         LockWindowUpdate(handle);
 		ReleaseDC(hTransWindow, hdc);
@@ -244,3 +254,24 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
 	}
 	return true;
 }
+bool isFocusOnEdit() {
+    if(pAutomation == nullptr)
+        return false;
+    try {
+        CComPtr<IUIAutomationElement> pTempElement;
+        HRESULT hr = pAutomation->GetFocusedElement(&pTempElement);
+        throw_if_fail(hr);
+        CONTROLTYPEID iControlType;
+        if(pTempElement)
+            pTempElement->get_CurrentControlType(&iControlType); 
+        if(iControlType == UIA_EditControlTypeId) {
+            return true;
+        }
+        else
+            return false;
+    }
+    catch (_com_error err) {
+    }
+    return false;
+}
+

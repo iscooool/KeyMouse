@@ -33,7 +33,13 @@
 #define  SHOWTAG    27
 #define  CLEANTAG   28
 #define  TOGGLEENABLE 29
+#define  SCROLLUP 30
+#define  SCROLLDOWN 31
 
 #define MAX_LOADSTRING 100
 // user defined message.
 #define WM_TRAY WM_USER + 1
+
+// user defined virtual key mapping.
+#define KM_SCROLLDOWN 0x4A  // J
+#define KM_SCROLLUP 0x4B    // K

@@ -8,6 +8,7 @@ Context::Context() {
     tag_map_ =  
         std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>();  
     enable_state_ = true;
+	mode_ = NORMAL_MODE;
 }
 
 Context::~Context() {
@@ -37,6 +38,15 @@ const std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>> &
     Context::GetTagMap() const {
     return tag_map_;
 }
+void Context::SetScrollVec(
+        std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>> &vec
+        ) {
+    scroll_vec_ = std::move(vec);
+}
+const std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>> & 
+    Context::GetScrollVec() const {
+        return scroll_vec_;
+    }
 
 void Context::SetEnableState(const bool flag) {
     enable_state_ = flag;
@@ -54,4 +64,11 @@ const HWND &Context::GetTransWindow() const {
     return transparent_window_;
 }
 
+void Context::SetMode(const Mode mode) {
+    mode_ = mode;
+}
+
+const Context::Mode &Context::GetMode() const {
+    return mode_;
+}
 }
