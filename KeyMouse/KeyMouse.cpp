@@ -364,6 +364,23 @@ void EditInputProxy(HWND hWnd, WORD VirtualKey) {
     RegisterHotKey(hWnd, SCROLLUP, 0, 0x4B /* K */); 
 }
 
+bool CompareBlackList() {
+    HWND handle = GetForegroundWindow();
+    DWORD pid;
+    GetWindowThreadProcessId(handle, &pid);
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ , FALSE, pid);    
+    TCHAR lpFileName[100] = {0};
+    GetModuleFileNameEx(
+            hProc,
+            NULL,
+            lpFileName,
+            100
+            );
+
+    CloseHandle(hProc);
+    return true;
+}
+
 // TODO: unused. delete it later.
 void ScrollElement(CComPtr<IUIAutomationElement> &pElement, ScrollAmount amount) {
     try {
@@ -541,6 +558,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                              {
                                 if(!pCtx->GetEnableState())
                                     break;
+                                CompareBlackList();
 
                                 pCtx->SetMode(KeyMouse::Context::SELECT_MODE);
                                 HWND handle = GetForegroundWindow();
@@ -584,15 +602,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                              break;
                          default:   // for entering tags in select mode.
                              {
-                                if(isFocusOnEdit()) {
-                                    EditInputProxy(hWnd, VirtualKey);
-                                    break;
-                                } else {
-                                }
                                 auto mode = pCtx->GetMode();
                                 if(mode == KeyMouse::Context::SELECT_MODE) {
                                     SelectModeHandle(hWnd, VirtualKey);
-                                }
+								}
+								else if (isFocusOnEdit()) {
+									EditInputProxy(hWnd, VirtualKey);
+								}
                                 else if ( mode == KeyMouse::Context::NORMAL_MODE) {
 									HWND handle = GetForegroundWindow();
                                     NormalModeHandle(handle, VirtualKey);
