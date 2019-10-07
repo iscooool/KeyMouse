@@ -63,7 +63,13 @@ void Context::SetTransWindow(const HWND hWnd) {
 const HWND &Context::GetTransWindow() const {
     return transparent_window_;
 }
+void Context::SetForeWindow(const HWND hWnd) {
+	fore_window_ = hWnd;
+}
 
+const HWND &Context::GetForeWindow() const {
+	return fore_window_;
+}
 void Context::SetMode(const Mode mode) {
     mode_ = mode;
 }

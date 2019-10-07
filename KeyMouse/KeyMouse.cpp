@@ -51,7 +51,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     
     std::unique_ptr<KeyMouse::Context> pCtx(new KeyMouse::Context());
     // Store a Context pointer in extra space of window hWnd.
-    SetWindowLongPtr(hWnd, 0, reinterpret_cast<LONG_PTR>(pCtx.get()));
+    SetClassLongPtr(hWnd, 0, reinterpret_cast<LONG_PTR>(pCtx.get()));
     MSG msg;
 
     // Main message loop:
@@ -85,8 +85,8 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
     wcex.style          = CS_HREDRAW | CS_VREDRAW;
     wcex.lpfnWndProc    = WndProc;
-    wcex.cbClsExtra     = 0;
-    wcex.cbWndExtra     = sizeof(KeyMouse::Context*); // Extra space for Context.
+    wcex.cbClsExtra     = sizeof(KeyMouse::Context*); // Extra space for Context.
+	wcex.cbWndExtra     = 0;
     wcex.hInstance      = hInstance;
     wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_KEYMOUSE));
     wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
@@ -193,7 +193,7 @@ void EscSelectMode(HWND hWnd) {
     // Get current context.
     KeyMouse::Context *pCtx = 
         reinterpret_cast<KeyMouse::Context *>(
-                GetWindowLongPtr(hWnd, 0)
+                GetClassLongPtr(hWnd, 0)
                 );
     HWND handle = pCtx->GetTransWindow();
     // Enable window drawing.
@@ -212,7 +212,7 @@ void SelectModeHandle(HWND hWnd, WORD VirtualKey) {
     // Get current context.
     KeyMouse::Context *pCtx = 
         reinterpret_cast<KeyMouse::Context *>(
-                GetWindowLongPtr(hWnd, 0)
+                GetClassLongPtr(hWnd, 0)
                 );
     // If the VIrtualKey is out of our expectation.
     // i.e. VirtualKey is not in A - Z.
@@ -347,7 +347,7 @@ void InvokeElement(CComPtr<IUIAutomationElement> &pElement) {
 
 }
 // to avoid conflict when facus on text edit field.
-void EditInputProxy(HWND hWnd, WORD VirtualKey) {
+void EditInputForward(HWND hWnd, WORD VirtualKey) {
     UnregisterHotKey(hWnd, SCROLLDOWN);
     UnregisterHotKey(hWnd, SCROLLUP);
     INPUT ip;
@@ -456,7 +456,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     // Get current context.
     KeyMouse::Context *pCtx = 
         reinterpret_cast<KeyMouse::Context *>(
-                GetWindowLongPtr(hWnd, 0)
+                GetClassLongPtr(hWnd, 0)
                 );
     
     switch (message)
@@ -561,8 +561,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                                 CompareBlackList();
 
                                 pCtx->SetMode(KeyMouse::Context::SELECT_MODE);
-                                HWND handle = GetForegroundWindow();
-                                EnumConditionedElement(handle, hWnd, hInst);
+								HWND hForeWindow = GetForegroundWindow();
+								pCtx->SetForeWindow(hForeWindow);
+                                //EnumConditionedElement(handle, hWnd, hInst);
+								CreateTransparentWindow(hInst, hWnd);
                                 RegisterHotKey(hWnd, CLEANTAG, 0, VK_ESCAPE);
                                 RegisterTagHotKey(hWnd);
 
@@ -607,7 +609,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                                     SelectModeHandle(hWnd, VirtualKey);
 								}
 								else if (isFocusOnEdit()) {
-									EditInputProxy(hWnd, VirtualKey);
+									EditInputForward(hWnd, VirtualKey);
 								}
                                 else if ( mode == KeyMouse::Context::NORMAL_MODE) {
 									HWND handle = GetForegroundWindow();

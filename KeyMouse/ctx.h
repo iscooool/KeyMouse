@@ -27,6 +27,8 @@ public:
     const bool &GetEnableState() const;
     void SetTransWindow(const HWND hWnd);
     const HWND &GetTransWindow() const;
+	void SetForeWindow(const HWND hWnd);
+	const HWND &GetForeWindow() const;
     void SetMode(const Mode mode);
     const Mode &GetMode() const;
 
@@ -38,6 +40,7 @@ private:
     std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>> scroll_vec_;
     bool enable_state_;
     HWND transparent_window_;
+	HWND fore_window_;
     Mode mode_;
 
 };

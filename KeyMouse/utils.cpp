@@ -1,5 +1,7 @@
 ﻿#include "stdafx.h"
 #include "utils.h"
+#include "KeyMouse.h"
+
 
 inline void throw_if_fail(HRESULT hr) {
 	if (FAILED(hr))
@@ -13,62 +15,128 @@ HRESULT InitializeUIAutomation(IUIAutomation **ppAutomation) {
 		CLSCTX_INPROC_SERVER, IID_IUIAutomation,
 		reinterpret_cast<void**>(ppAutomation));
 }
-
-HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMaskWindow)
+LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+
+	switch (message)
+	{
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps = { 0 };
+		HDC hDC = ::BeginPaint(hWnd, &ps);
+		
+		::SetTextColor(hDC, RGB(0, 0, 0));
+		//::SetBkMode(hDC, TRANSPARENT);
+
+		HWND *phMainWnd =
+			reinterpret_cast<HWND *>(
+				GetClassLongPtr(hWnd, 0)
+				);
+		KeyMouse::Context *pCtx =
+			reinterpret_cast<KeyMouse::Context *>(
+				GetClassLongPtr(*phMainWnd, 0)
+				);
+		pCtx->SetTransWindow(hWnd);
+		EnumConditionedElement(*phMainWnd, hDC);
+		//::DrawTextExW(hDC, L"Hello, World!", -1, &rc,
+		//	DT_SINGLELINE | DT_CENTER | DT_VCENTER, NULL);
+		::EndPaint(hWnd, &ps);
+	}
+	break;
+	case WM_NCHITTEST:
+		return HTCAPTION;
+	case WM_ERASEBKGND:
+		RECT rect;
+		GetClientRect(hWnd, &rect);
+		FillRect((HDC)wParam, &rect, CreateSolidBrush(RGB(255, 0, 255)));
+
+		break;
+	case WM_DESTROY:
+		//PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return 0;
+}
+
+HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
+{
+	HWND hMaskWindow = GetForegroundWindow();
 	HWND hWnd;
 	HINSTANCE hInst = hInstance;
 
-	DWORD Flags1 = WS_EX_COMPOSITED | WS_EX_LAYERED | 
-		WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TRANSPARENT;
+	DWORD Flags1 = WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TRANSPARENT;
 	DWORD Flags2 = WS_POPUP;
 
 	WCHAR szWindowClass[] = TEXT("Transparent Window");
 	WCHAR szTitle[] = TEXT("Transparent Window");
-    // Get the rect of target window to create mask window of the same size.
-    RECT MaskRect;
-    GetWindowRect(hMaskWindow, &MaskRect);
-    int X = MaskRect.left;
-    int Y = MaskRect.top;
-    int Width = MaskRect.right - MaskRect.left;
-    int Height = MaskRect.bottom - MaskRect.top;
+
+	WNDCLASSEXW wcex;
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc2;
+	wcex.cbClsExtra = sizeof(HWND *);		// Extra space for main window.
+	wcex.cbWndExtra = 0;
+	wcex.hInstance = hInstance;
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_KEYMOUSE));
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = (HBRUSH)::GetStockObject(BLACK_BRUSH);
+	wcex.lpszMenuName = NULL;
+	wcex.lpszClassName = szWindowClass;
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+	RegisterClassExW(&wcex);
+    // Get the resolution of th screen.
+	DEVMODE dm;
+	dm.dmSize = sizeof(DEVMODE);
+	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm);
+    int X = 0;
+    int Y = 0;
+	int Width = dm.dmPelsWidth;
+	int Height = dm.dmPelsHeight;
 	hWnd = CreateWindowEx(Flags1, szWindowClass, szTitle, Flags2, 
             X, Y, 
             Width, Height, 
             0, 0, hInstance, 0);
-
+	
 	if (!hWnd)
         return NULL;
 
-	HRGN GGG = CreateRectRgn(MaskRect.left, MaskRect.top, 
-            MaskRect.right, MaskRect.bottom);
+	// Set the main window's hWnd for getting the context.
+	std::unique_ptr<HWND> phMainWnd(new HWND(hMainWnd));
+	SetClassLongPtr(hWnd, 0, reinterpret_cast<LONG_PTR>(phMainWnd.get()));
+
+	HRGN GGG = CreateRectRgn(X, Y, 
+            Width, Height);
 	InvertRgn(GetDC(hWnd), GGG);
 	SetWindowRgn(hWnd, GGG, false);
 
 	COLORREF RRR = RGB(255, 0, 255);
-	SetLayeredWindowAttributes(hWnd, RRR, (BYTE)0, LWA_COLORKEY);
+	SetLayeredWindowAttributes(hWnd, RRR, (BYTE)0,  LWA_COLORKEY);
 
 	ShowWindow(hWnd, SW_SHOWNORMAL);
 	UpdateWindow(hWnd);
 
-
+	
 	return hWnd;
 }
-BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
+BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
 	try {
-        DWORD start_time = GetTickCount();
+        //DWORD start_time = GetTickCount();
         // Create Transparent window.
-        HWND hTransWindow = CreateTransparentWindow(hInst, handle);
 
         // Get current context.
         KeyMouse::Context *pCtx = 
             reinterpret_cast<KeyMouse::Context *>(
-                    GetWindowLongPtr(hWnd, 0)
+                    GetClassLongPtr(hMainWnd, 0)
                     );
-        pCtx->SetTransWindow(hTransWindow);
-
+		HWND hForeWnd = pCtx->GetForeWindow();
+		HWND hTransWnd = pCtx->GetTransWindow();
 		CComPtr<IUIAutomationElement> pElement;
-		HRESULT hr = pAutomation->ElementFromHandle(handle, &pElement);
+		HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
 		throw_if_fail(hr);
 
 		CComPtr<IUIAutomationElementArray> pElementArray;
@@ -210,12 +278,11 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
         std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
         // the last one of the queue must be the longest one.
         pCtx->SetMaxTagLen(TagQueue.back().length());
-        DWORD end_time = GetTickCount();
+        /*DWORD end_time = GetTickCount();
         DWORD total_time = end_time - start_time;
-        cout<<total_time<<std::endl;
+        cout<<total_time<<std::endl;*/
 
-		HDC hdc;
-        hdc = GetDCEx(hTransWindow, NULL, DCX_LOCKWINDOWUPDATE);
+		
 		// Traverse the items of ElementArray.
         for(int i = 0; i < nChildrenNum; ++i) {
             int length;
@@ -234,7 +301,7 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
                 POINT point;
                 point.x = Rect.left;
                 point.y = Rect.top;
-
+				ScreenToClient(hTransWnd, &point);
                 BOOL result = TextOut(hdc,
                         point.x,
                         point.y,
@@ -247,8 +314,8 @@ BOOL EnumConditionedElement(HWND handle, HWND hWnd, HINSTANCE hInst) {
         }
         pCtx->SetScrollVec(ScrollVec);
         pCtx->SetTagMap(TagMap);
-        LockWindowUpdate(handle);
-		ReleaseDC(hTransWindow, hdc);
+        LockWindowUpdate(hForeWnd);
+		
 	}
 	catch (_com_error err) {
 	}
@@ -265,6 +332,7 @@ bool isFocusOnEdit() {
         if(pTempElement)
             pTempElement->get_CurrentControlType(&iControlType); 
         if(iControlType == UIA_EditControlTypeId) {
+			
             return true;
         }
         else
