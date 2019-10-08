@@ -23,24 +23,25 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps = { 0 };
-		HDC hDC = ::BeginPaint(hWnd, &ps);
+		HDC hDC = BeginPaint(hWnd, &ps);
+		SetTextColor(hDC, RGB(0, 0, 0));
 		
-		::SetTextColor(hDC, RGB(0, 0, 0));
-		//::SetBkMode(hDC, TRANSPARENT);
-
 		HWND *phMainWnd =
 			reinterpret_cast<HWND *>(
 				GetClassLongPtr(hWnd, 0)
 				);
+		auto Error = GetLastError();
 		KeyMouse::Context *pCtx =
 			reinterpret_cast<KeyMouse::Context *>(
 				GetClassLongPtr(*phMainWnd, 0)
 				);
+		if (pCtx == nullptr)
+			break;
 		pCtx->SetTransWindow(hWnd);
 		EnumConditionedElement(*phMainWnd, hDC);
-		//::DrawTextExW(hDC, L"Hello, World!", -1, &rc,
-		//	DT_SINGLELINE | DT_CENTER | DT_VCENTER, NULL);
-		::EndPaint(hWnd, &ps);
+
+		EndPaint(hWnd, &ps);
+
 	}
 	break;
 	case WM_NCHITTEST:

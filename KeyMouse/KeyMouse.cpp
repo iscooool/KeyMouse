@@ -556,8 +556,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                      {
                          case VK_OEM_1: // enter selcet mode.
                              {
-                                if(!pCtx->GetEnableState())
-                                    break;
+								if (!pCtx->GetEnableState())
+									break;
+								auto Mode = pCtx->GetMode();
+								// prevent from multiple selecting.
+								if (Mode == KeyMouse::Context::SELECT_MODE) {
+									EscSelectMode(hWnd);
+									pCtx->SetMode(KeyMouse::Context::NORMAL_MODE);
+								}
                                 CompareBlackList();
 
                                 pCtx->SetMode(KeyMouse::Context::SELECT_MODE);
