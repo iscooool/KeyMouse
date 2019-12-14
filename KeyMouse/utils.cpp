@@ -38,7 +38,8 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (pCtx == nullptr)
 			break;
 		pCtx->SetTransWindow(hWnd);
-		EnumConditionedElement(*phMainWnd, hDC);
+		//EnumConditionedElement(*phMainWnd, hDC);
+		EnumConditionedElementTest(*phMainWnd, hDC);
 
 		EndPaint(hWnd, &ps);
 
@@ -123,6 +124,287 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 
 	
 	return hWnd;
+}
+
+/**
+* @brief: a depth first search of element tree to find desierd elements.(can't 
+		  do better than FindAll.)
+*
+* @param: int restric_depth : the search depth.
+*		: IUIAutomationElement *element : the root node to walk.
+*       : IUIAutomationCacheRequest * cacheRequest
+*       : IUIAutomationTreeWalker *walker
+*       : std::vector<CComPtr<IUIAutomationElement>> *found
+*
+* @return: HRESULT
+*/
+HRESULT WalkDesiredElementBuildCache(
+	int restrict_depth,
+	IUIAutomationElement *element,
+	IUIAutomationCacheRequest *cacheRequest,
+	IUIAutomationTreeWalker *walker,
+	std::vector<CComPtr<IUIAutomationElement>> *found)
+ {
+
+	CComPtr<IUIAutomationElement> pElement;
+	walker->GetFirstChildElementBuildCache(element, cacheRequest, &pElement);
+	if (pElement == nullptr)
+		return S_OK;
+	int nDepth = 0;
+	std::queue<IUIAutomationElement*> queue;
+	queue.push(element);
+	// the pointer to the next depth's first element on the element tree.
+	// For caculating the depth of current element.
+	BSTR szNextDepthFirstId;
+	element->get_CurrentAutomationId(&szNextDepthFirstId);
+	IUIAutomationElement *pCurrent;
+	do {
+		pCurrent = queue.front();
+		queue.pop();
+		IUIAutomationElement *pFirstChild;
+
+		// find the next depth's first element.
+		BSTR szCurrentId;
+		pCurrent->get_CurrentAutomationId(&szCurrentId);
+		if (StrCmp(szCurrentId, szNextDepthFirstId) == 0) {
+			do {
+				walker->GetFirstChildElementBuildCache(
+					pCurrent, cacheRequest, &pFirstChild);
+				if (pFirstChild == nullptr && !queue.empty()) {	// when current has no child.
+					found->push_back(CComPtr<IUIAutomationElement>(pCurrent));
+					pCurrent = queue.front();
+					queue.pop();
+				}
+				else {
+					szNextDepthFirstId = szCurrentId;
+					nDepth++;
+					break;
+				}
+			} while (pFirstChild == nullptr);
+		}
+		// push all children of pCurrent to the queue.
+		if (pCurrent != nullptr) {
+			IUIAutomationElement *pChild;
+			walker->GetFirstChildElementBuildCache(
+				pCurrent, cacheRequest, &pChild);
+			while (pChild != nullptr) {
+				BSTR szTemp;
+				pChild->get_CurrentName(&szTemp);
+				OutputDebugString(szTemp);
+				queue.push(pChild);
+				walker->GetNextSiblingElementBuildCache(
+					pChild, cacheRequest, &pChild);
+			}
+			found->push_back(CComPtr<IUIAutomationElement>(pCurrent));
+		}
+
+		if (nDepth >= restrict_depth) {
+			break;
+		}
+	} while (!queue.empty());
+	return S_OK;
+}
+// use WalkDesiredElementBuildCache in this function. But performance is worse 
+// than FindAll. 
+BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
+	try {
+        //DWORD start_time = GetTickCount();
+        // Create Transparent window.
+
+        // Get current context.
+        KeyMouse::Context *pCtx = 
+            reinterpret_cast<KeyMouse::Context *>(
+                    GetClassLongPtr(hMainWnd, 0)
+                    );
+		HWND hForeWnd = pCtx->GetForeWindow();
+		HWND hTransWnd = pCtx->GetTransWindow();
+		CComPtr<IUIAutomationElement> pElement;
+		HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
+		throw_if_fail(hr);
+
+		CComPtr<IUIAutomationElementArray> pElementArray;
+		// Define the condition by pTotalCondition to find all desired items.
+        std::vector<PROPERTYID> vPropertyId = {
+            UIA_ListItemControlTypeId,
+            UIA_ButtonControlTypeId,
+            UIA_TreeItemControlTypeId,
+            UIA_TabItemControlTypeId,
+            UIA_HyperlinkControlTypeId,
+			UIA_SplitButtonControlTypeId,
+            UIA_ScrollBarControlTypeId
+        };
+        SAFEARRAY *pConditionVector = SafeArrayCreateVector(
+                VT_UNKNOWN,
+                0,
+                vPropertyId.size()
+                );
+
+        LONG i = 0;
+        for (PROPERTYID PropertyId : vPropertyId) {
+            IUIAutomationCondition *pCondition;
+            VARIANT Val;
+            Val.vt = VT_I4;
+            Val.lVal = PropertyId;
+            hr = pAutomation->CreatePropertyCondition(UIA_ControlTypePropertyId,
+                Val,
+                &pCondition);
+            throw_if_fail(hr);
+            
+            hr = SafeArrayPutElement(pConditionVector, &i, pCondition); 
+            throw_if_fail(hr);
+
+            ++i;
+        }
+        CComPtr<IUIAutomationCondition> pTotalOrCondition;
+        
+        hr = pAutomation->CreateOrConditionFromArray(
+                pConditionVector,
+                &pTotalOrCondition
+                );
+        throw_if_fail(hr);
+
+        CComPtr<IUIAutomationCondition> pIsEnabledCondition;
+        VARIANT Val;
+        Val.vt = VT_BOOL;
+        Val.boolVal = VARIANT_TRUE;
+        hr = pAutomation->CreatePropertyCondition(UIA_IsEnabledPropertyId,
+            Val,
+            &pIsEnabledCondition);
+        throw_if_fail(hr);
+        CComPtr<IUIAutomationCondition> pIsOffscreenCondition;
+        Val.vt = VT_BOOL;
+        Val.boolVal = VARIANT_TRUE;
+        hr = pAutomation->CreatePropertyCondition(UIA_IsOffscreenPropertyId,
+            Val,
+            &pIsOffscreenCondition);
+        throw_if_fail(hr);
+
+        CComPtr<IUIAutomationCondition> pBoolCondition;
+        hr = pAutomation->CreateAndCondition(pIsEnabledCondition,
+                pIsOffscreenCondition,
+                &pBoolCondition
+                );
+        throw_if_fail(hr);
+
+        CComPtr<IUIAutomationCondition> pTotalCondition;
+        hr = pAutomation->CreateAndCondition(pIsEnabledCondition,
+                pTotalOrCondition,
+                &pTotalCondition
+                );
+
+        CComPtr<IUIAutomationCacheRequest> pCacheRequest;
+        hr = pAutomation->CreateCacheRequest(&pCacheRequest);
+        throw_if_fail(hr);
+
+        //hr = pCacheRequest->AddPattern(UIA_SelectionItemPatternId);
+        //throw_if_fail(hr);
+        hr = pCacheRequest->AddPattern(UIA_ScrollPatternId);
+        throw_if_fail(hr);
+        hr = pCacheRequest->AddPattern(UIA_InvokePatternId);
+        throw_if_fail(hr);
+        hr = pCacheRequest->AddProperty(UIA_BoundingRectanglePropertyId);
+        throw_if_fail(hr);
+        hr = pCacheRequest->AddProperty(UIA_ControlTypePropertyId);
+        throw_if_fail(hr);
+
+        CComPtr<IUIAutomationCondition> pTrueCondition;
+        hr = pAutomation->CreateTrueCondition(&pTrueCondition);
+        throw_if_fail(hr);
+		CComPtr<IUIAutomationElementArray> pChildrenElementArray;
+        // Find all children of focus window for multi-threads task
+        // partition.
+        hr = pElement->FindAllBuildCache(TreeScope_Children, 
+                pTrueCondition,
+                pCacheRequest,
+                &pChildrenElementArray);
+        throw_if_fail(hr);
+        
+        int nChildrenNum = 0;
+        if(pChildrenElementArray != nullptr) {
+            hr = pChildrenElementArray->get_Length(&nChildrenNum);
+            throw_if_fail(hr);
+        }
+        std::unique_ptr<std::thread[]> pThread(new std::thread[nChildrenNum]);
+        auto pThreadElementVector(
+			new std::vector<CComPtr<IUIAutomationElement>>[nChildrenNum]
+		);
+		CComPtr<IUIAutomationTreeWalker> pWalker;
+		pAutomation->get_RawViewWalker(&pWalker);
+        // Task assignment for multi-threads.
+        for(int j = 0; j < nChildrenNum; ++j) {
+            IUIAutomationElement *pTempElement;
+            pChildrenElementArray->GetElement(j, &pTempElement);
+            pThread[j] = std::thread(&WalkDesiredElementBuildCache,
+                    10,
+                    pTempElement,
+                    pCacheRequest,
+					pWalker,
+                    &pThreadElementVector[j]
+                    );
+        }
+
+        int nTotalLength = 0;
+        for(int j = 0; j < nChildrenNum; ++j) {
+            pThread[j].join();
+            int length;
+            length = pThreadElementVector[j].size();
+            nTotalLength += length;
+        }
+
+        hr = SafeArrayDestroy(pConditionVector);
+        throw_if_fail(hr);
+
+        std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>
+            TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
+        std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>>
+            ScrollVec(new std::vector<CComPtr<IUIAutomationElement>>);
+
+		KeyMouse::TagCreator TC;
+        std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
+        // the last one of the queue must be the longest one.
+        pCtx->SetMaxTagLen(TagQueue.back().length());
+        /*DWORD end_time = GetTickCount();
+        DWORD total_time = end_time - start_time;
+        cout<<total_time<<std::endl;*/
+
+		
+		// Traverse the items of ElementArray.
+        for(int i = 0; i < nChildrenNum; ++i) {
+            int length;
+            length = pThreadElementVector[i].size();
+            throw_if_fail(hr);
+            auto ElementVector = pThreadElementVector[i];
+            for (int j = 0; j < length; ++j) {
+                CComPtr<IUIAutomationElement> pTempElement;
+				pTempElement = ElementVector[j];
+                RECT Rect;
+                pTempElement->get_CachedBoundingRectangle(&Rect);
+                string szTemp = TagQueue.front();
+                TagQueue.pop();
+                // print the tag on the screen.
+                const TCHAR *psText = szTemp.c_str();
+                POINT point;
+                point.x = Rect.left;
+                point.y = Rect.top;
+				ScreenToClient(hTransWnd, &point);
+                BOOL result = TextOut(hdc,
+                        point.x,
+                        point.y,
+                        psText, _tcslen(psText));
+                // insert the tag and Element into the keymap.
+                TagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
+                             szTemp, pTempElement)); 
+
+            }
+        }
+        pCtx->SetScrollVec(ScrollVec);
+        pCtx->SetTagMap(TagMap);
+        LockWindowUpdate(hForeWnd);
+		
+	}
+	catch (_com_error err) {
+	}
+	return true;
 }
 BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
 	try {
@@ -257,6 +539,7 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
                     &pThreadElementArray[j]
                     );
         }
+
         int nTotalLength = 0;
         for(int j = 0; j < nChildrenNum; ++j) {
             pThread[j].join();

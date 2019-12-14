@@ -120,6 +120,10 @@ BOOL RegisterAllHotKey(HWND hWnd) {
 }
 BOOL RegisterTagHotKey(HWND hWnd) {
     return (
+		// unregister the conflict hotkeys first.
+        UnregisterHotKey(hWnd, SCROLLDOWN) &&
+        UnregisterHotKey(hWnd, SCROLLUP) &&
+		// register hotkey for tags input.
         RegisterHotKey(hWnd, HOTKEY_A, 0, 0x41 /* A */) && 
         RegisterHotKey(hWnd, HOTKEY_B, 0, 0x42 /* B */) && 
         RegisterHotKey(hWnd, HOTKEY_C, 0, 0x43 /* C */) && 
@@ -129,8 +133,8 @@ BOOL RegisterTagHotKey(HWND hWnd) {
         RegisterHotKey(hWnd, HOTKEY_G, 0, 0x47 /* G */) && 
         RegisterHotKey(hWnd, HOTKEY_H, 0, 0x48 /* H */) && 
         RegisterHotKey(hWnd, HOTKEY_I, 0, 0x49 /* I */) && 
-        //RegisterHotKey(hWnd, HOTKEY_J, 0, 0x4A /* J */) && 
-        //RegisterHotKey(hWnd, HOTKEY_K, 0, 0x4B /* K */) && 
+        RegisterHotKey(hWnd, HOTKEY_J, 0, 0x4A /* J */) && 
+        RegisterHotKey(hWnd, HOTKEY_K, 0, 0x4B /* K */) && 
         RegisterHotKey(hWnd, HOTKEY_L, 0, 0x4C /* L */) && 
         RegisterHotKey(hWnd, HOTKEY_M, 0, 0x4D /* M */) && 
         RegisterHotKey(hWnd, HOTKEY_N, 0, 0x4E /* N */) && 
@@ -167,8 +171,8 @@ BOOL UnregisterTagHotKey(HWND hWnd) {
         UnregisterHotKey(hWnd, HOTKEY_G) && 
         UnregisterHotKey(hWnd, HOTKEY_H) && 
         UnregisterHotKey(hWnd, HOTKEY_I) && 
-        //UnregisterHotKey(hWnd, HOTKEY_J) && 
-        //UnregisterHotKey(hWnd, HOTKEY_K) && 
+        UnregisterHotKey(hWnd, HOTKEY_J) && 
+        UnregisterHotKey(hWnd, HOTKEY_K) && 
         UnregisterHotKey(hWnd, HOTKEY_L) && 
         UnregisterHotKey(hWnd, HOTKEY_M) && 
         UnregisterHotKey(hWnd, HOTKEY_N) && 
@@ -183,7 +187,10 @@ BOOL UnregisterTagHotKey(HWND hWnd) {
         UnregisterHotKey(hWnd, HOTKEY_W) && 
         UnregisterHotKey(hWnd, HOTKEY_X) && 
         UnregisterHotKey(hWnd, HOTKEY_Y) && 
-        UnregisterHotKey(hWnd, HOTKEY_Z)
+        UnregisterHotKey(hWnd, HOTKEY_Z) &&
+		// register the previous hotkeys.
+        RegisterHotKey(hWnd, SCROLLDOWN, 0, 0x4A /* J */) &&
+        RegisterHotKey(hWnd, SCROLLUP, 0, 0x4B /* K */) 
         );
 }
 
