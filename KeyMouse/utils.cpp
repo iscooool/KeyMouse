@@ -38,8 +38,8 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (pCtx == nullptr)
 			break;
 		pCtx->SetTransWindow(hWnd);
-		//EnumConditionedElement(*phMainWnd, hDC);
-		EnumConditionedElementTest(*phMainWnd, hDC);
+		EnumConditionedElement(*phMainWnd, hDC);
+		//EnumConditionedElementTest(*phMainWnd, hDC);
 
 		EndPaint(hWnd, &ps);
 
@@ -68,8 +68,8 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 	HWND hWnd;
 	HINSTANCE hInst = hInstance;
 
-	DWORD Flags1 = WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TRANSPARENT;
-	DWORD Flags2 = WS_POPUP;
+	DWORD Flags1 = WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TRANSPARENT;
+	DWORD Flags2 = WS_VISIBLE | WS_POPUP;
 
 	WCHAR szWindowClass[] = TEXT("Transparent Window");
 	WCHAR szTitle[] = TEXT("Transparent Window");
@@ -127,8 +127,8 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 }
 
 /**
-* @brief: a depth first search of element tree to find desierd elements.(can't 
-		  do better than FindAll.)
+* @brief: (this function is not finished yet.)a depth first search of element 
+		  tree to find desierd elements.(can't do better than FindAll.)
 *
 * @param: int restric_depth : the search depth.
 *		: IUIAutomationElement *element : the root node to walk.
@@ -141,15 +141,20 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 HRESULT WalkDesiredElementBuildCache(
 	int restrict_depth,
 	IUIAutomationElement *element,
+	IUIAutomationCondition *condition,
 	IUIAutomationCacheRequest *cacheRequest,
 	IUIAutomationTreeWalker *walker,
 	std::vector<CComPtr<IUIAutomationElement>> *found)
  {
 
-	CComPtr<IUIAutomationElement> pElement;
-	walker->GetFirstChildElementBuildCache(element, cacheRequest, &pElement);
-	if (pElement == nullptr)
+
+	CONTROLTYPEID ControlType;
+	element->get_CurrentControlType(&ControlType);
+	// TODO: DocumentControlType is used for skipping chrome mainwindow. need to
+	// optimize.
+	if (element == nullptr || ControlType == UIA_DocumentControlTypeId)
 		return S_OK;
+
 	int nDepth = 0;
 	std::queue<IUIAutomationElement*> queue;
 	queue.push(element);
@@ -164,36 +169,55 @@ HRESULT WalkDesiredElementBuildCache(
 		IUIAutomationElement *pFirstChild;
 
 		// find the next depth's first element.
-		BSTR szCurrentId;
-		pCurrent->get_CurrentAutomationId(&szCurrentId);
-		if (StrCmp(szCurrentId, szNextDepthFirstId) == 0) {
-			do {
-				walker->GetFirstChildElementBuildCache(
-					pCurrent, cacheRequest, &pFirstChild);
-				if (pFirstChild == nullptr && !queue.empty()) {	// when current has no child.
-					found->push_back(CComPtr<IUIAutomationElement>(pCurrent));
-					pCurrent = queue.front();
-					queue.pop();
-				}
-				else {
-					szNextDepthFirstId = szCurrentId;
-					nDepth++;
-					break;
-				}
-			} while (pFirstChild == nullptr);
-		}
+		//BSTR szCurrentId;
+		//pCurrent->get_CurrentAutomationId(&szCurrentId);
+		//if (StrCmp(szCurrentId, szNextDepthFirstId) == 0) {
+		//	do {
+		//		walker->GetFirstChildElementBuildCache(
+		//			pCurrent, cacheRequest, &pFirstChild);
+		//		if (pFirstChild == nullptr && !queue.empty()) {	// when current has no child.
+		//			found->push_back(CComPtr<IUIAutomationElement>(pCurrent));
+		//			pCurrent = queue.front();
+		//			queue.pop();
+		//		}
+		//		else {
+		//			szNextDepthFirstId = szCurrentId;
+		//			nDepth++;
+		//			break;
+		//		}
+		//	} while (pFirstChild == nullptr);
+		//}
 		// push all children of pCurrent to the queue.
 		if (pCurrent != nullptr) {
-			IUIAutomationElement *pChild;
-			walker->GetFirstChildElementBuildCache(
-				pCurrent, cacheRequest, &pChild);
-			while (pChild != nullptr) {
-				BSTR szTemp;
-				pChild->get_CurrentName(&szTemp);
-				OutputDebugString(szTemp);
-				queue.push(pChild);
-				walker->GetNextSiblingElementBuildCache(
-					pChild, cacheRequest, &pChild);
+			HRESULT hr;
+
+			CComPtr<IUIAutomationElementArray> pChildrenElementArray;
+			hr = pCurrent->FindAllBuildCache(TreeScope_Children, 
+					condition,
+					cacheRequest,
+					&pChildrenElementArray);
+			throw_if_fail(hr);
+			
+			int nChildrenNum = 0;
+			if(pChildrenElementArray != nullptr) {
+				hr = pChildrenElementArray->get_Length(&nChildrenNum);
+				throw_if_fail(hr);
+			}
+			for (int i = 0; i < nChildrenNum; ++i) {
+				IUIAutomationElement *pChild;
+				pChildrenElementArray->GetElement(i, &pChild);
+				if (pChild != nullptr) {
+					// for debug.
+					BSTR szTemp;
+					pChild->get_CurrentName(&szTemp);
+					OutputDebugString(szTemp);
+
+					pChild->get_CurrentControlType(&ControlType);
+					if (!(ControlType == UIA_DocumentControlTypeId)) {
+						queue.push(pChild);
+					}
+				}
+
 			}
 			found->push_back(CComPtr<IUIAutomationElement>(pCurrent));
 		}
@@ -330,13 +354,15 @@ BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
 		);
 		CComPtr<IUIAutomationTreeWalker> pWalker;
 		pAutomation->get_RawViewWalker(&pWalker);
+		//pAutomation->CreateTreeWalker(pTrueCondition, &pWalker);
         // Task assignment for multi-threads.
         for(int j = 0; j < nChildrenNum; ++j) {
             IUIAutomationElement *pTempElement;
             pChildrenElementArray->GetElement(j, &pTempElement);
             pThread[j] = std::thread(&WalkDesiredElementBuildCache,
-                    10,
+                    20,
                     pTempElement,
+					pTotalCondition,
                     pCacheRequest,
 					pWalker,
                     &pThreadElementVector[j]
@@ -408,8 +434,7 @@ BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
 }
 BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
 	try {
-        //DWORD start_time = GetTickCount();
-        // Create Transparent window.
+        DWORD start_time = GetTickCount();
 
         // Get current context.
         KeyMouse::Context *pCtx = 
@@ -562,9 +587,9 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
         std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
         // the last one of the queue must be the longest one.
         pCtx->SetMaxTagLen(TagQueue.back().length());
-        /*DWORD end_time = GetTickCount();
+        DWORD end_time = GetTickCount();
         DWORD total_time = end_time - start_time;
-        cout<<total_time<<std::endl;*/
+        cout<<total_time<<std::endl;
 
 		
 		// Traverse the items of ElementArray.
