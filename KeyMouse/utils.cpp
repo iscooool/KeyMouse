@@ -382,8 +382,6 @@ BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
 
         std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>
             TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
-        std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>>
-            ScrollVec(new std::vector<CComPtr<IUIAutomationElement>>);
 
 		KeyMouse::TagCreator TC;
         std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
@@ -423,7 +421,6 @@ BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
 
             }
         }
-        pCtx->SetScrollVec(ScrollVec);
         pCtx->SetTagMap(TagMap);
         LockWindowUpdate(hForeWnd);
 		
@@ -568,8 +565,10 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
         int nTotalLength = 0;
         for(int j = 0; j < nChildrenNum; ++j) {
             pThread[j].join();
-            int length;
-            hr = pThreadElementArray[j]->get_Length(&length);
+            int length = 0;
+			if (pThreadElementArray[j] != nullptr) {
+				hr = pThreadElementArray[j]->get_Length(&length);
+			}
             nTotalLength += length;
             throw_if_fail(hr);
 
@@ -578,10 +577,7 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
         hr = SafeArrayDestroy(pConditionVector);
         throw_if_fail(hr);
 
-        std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>
-            TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
-        std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>>
-            ScrollVec(new std::vector<CComPtr<IUIAutomationElement>>);
+        KeyMouse::PTagMap TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
 
 		KeyMouse::TagCreator TC;
         std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
@@ -621,7 +617,6 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
 
             }
         }
-        pCtx->SetScrollVec(ScrollVec);
         pCtx->SetTagMap(TagMap);
         LockWindowUpdate(hForeWnd);
 		
@@ -650,5 +645,24 @@ bool isFocusOnEdit() {
     catch (_com_error err) {
     }
     return false;
+}
+//Returns the last Win32 error, in string format. Returns an empty string if there is no error.
+std::string GetLastErrorAsString()
+{
+    //Get the error message, if any.
+    DWORD errorMessageID = ::GetLastError();
+    if(errorMessageID == 0)
+        return std::string(); //No error message has been recorded
+
+    LPSTR messageBuffer = nullptr;
+    size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                 NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
+
+    std::string message(messageBuffer, size);
+
+    //Free the buffer.
+    LocalFree(messageBuffer);
+
+    return message;
 }
 

@@ -1,0 +1,14 @@
+{
+    "profile":
+    {
+        "runOnStartUp": true
+    },
+    "keybindings":
+    {
+        "toggleEnable": "f12",
+        "scrollUp": "k",
+        "scrollDown": "j",
+        "selectMode": "alt+;",
+        "escape": "esc"
+    }
+}

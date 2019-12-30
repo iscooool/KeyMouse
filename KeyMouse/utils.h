@@ -11,3 +11,4 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd);
 BOOL  EnumConditionedElementTest(HWND hMainWnd, HDC hdc);
 BOOL  EnumConditionedElement(HWND hMainWnd, HDC hdc);
 bool isFocusOnEdit();
+std::string GetLastErrorAsString();
