@@ -14,7 +14,7 @@
 
 > if KeyMouse doesn't work, try to run as Administrator.
 
-## Configration
+## Configuration
 **KeyMouse** supports configuration for hot keys and profile.you can put your configuration in `config.json`(put in the path the same as `KeyMouse.exe`). there is a typical configuration:
 ```
 {
@@ -50,7 +50,7 @@ The options of profile is listed below:
 
 The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`.
 
-The opttion of hot keys is listed below:
+The option of hot keys is listed below:
 
 | Options       | Type           | Default  | Description|
 | ------------- | ------------- | ----------- |----------|
