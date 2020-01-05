@@ -30,7 +30,8 @@ BOOL RegisterAllHotKey(HWND hWnd, bool exclude_toggle) {
 		flag &&
 		RegCustomHotKey(hWnd, "selectMode") &&
 		RegCustomHotKey(hWnd, "scrollUp") &&
-		RegCustomHotKey(hWnd, "scrollDown")
+		RegCustomHotKey(hWnd, "scrollDown") &&
+		RegCustomHotKey(hWnd, "fastSelectMode")
 		);
 }
 BOOL RegisterTagHotKey(HWND hWnd) {
@@ -76,7 +77,8 @@ BOOL UnregisterAllHotKey(HWND hWnd, bool exclude_toggle) {
 		flag &&
 		UnregCustomHotKey(hWnd, "selectMode") &&
 		UnregCustomHotKey(hWnd, "scrollUp") &&
-		UnregCustomHotKey(hWnd, "scrollDown")
+		UnregCustomHotKey(hWnd, "scrollDown") &&
+		UnregCustomHotKey(hWnd, "fastSelectMode")
 		);
 }
 BOOL UnregisterTagHotKey(HWND hWnd) {

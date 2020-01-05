@@ -33,6 +33,7 @@
 #define  TOGGLEENABLE 29
 #define  SCROLLUP 30
 #define  SCROLLDOWN 31
+#define  FASTSELECTMODE 32
 namespace KeyMouse {
 BOOL RegCustomHotKey(HWND hWnd, std::string key);
 BOOL UnregCustomHotKey(HWND hWnd, std::string key);

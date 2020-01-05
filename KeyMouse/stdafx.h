@@ -21,6 +21,7 @@
 
 // TODO: reference additional headers your program requires here
 #include <iostream>
+#include <sstream>
 #include <psapi.h>
 #include <shellapi.h>
 #include <UIAutomation.h>
@@ -29,8 +30,10 @@
 #include <memory>
 #include <map>
 #include <vector>
+#include <queue>
 #include <utility>
 #include <thread>
+#include <stdlib.h>
 
 
 #define _CRTDBG_MAP_ALLOC

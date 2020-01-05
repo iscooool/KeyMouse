@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "utils.h"
 #include "KeyMouse.h"
+#include "UIAHandler.h"
 
 
 inline void throw_if_fail(HRESULT hr) {
@@ -15,6 +16,19 @@ HRESULT InitializeUIAutomation(IUIAutomation **ppAutomation) {
 		CLSCTX_INPROC_SERVER, IID_IUIAutomation,
 		reinterpret_cast<void**>(ppAutomation));
 }
+
+/**
+* @brief: WndProc2 is used by a transparent window which is used to paint hints
+* on.
+*
+* @param: HWND hWnd: the handle of transparent window. And arguments below is
+* similar with common win32 WndProc.
+*       : UINT message
+*       : WPARAM wParam
+*       : LPARAM lParam
+*
+* @return: LRESULT
+*/
 LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 
@@ -62,6 +76,15 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+/**
+* @brief: create a transparent window to paint hints on.
+*
+* @param: HINSTANCE hInstance: the global HINSTANCE.
+*       : HWND hMainWnd: the original window which is created when app starts
+*       up. we store global context in it.
+*
+* @return: HWND: the handle of transparent window.
+*/
 HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 {
 	HWND hMaskWindow = GetForegroundWindow();
@@ -127,8 +150,9 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 }
 
 /**
-* @brief: (this function is not finished yet.)a depth first search of element 
-		  tree to find desierd elements.(can't do better than FindAll.)
+* @brief: TODO: need to be refactored.
+*         (this function is not finished yet.)a depth first search of element 
+*         tree to find desierd elements.(can't do better than FindAll.)
 *
 * @param: int restric_depth : the search depth.
 *		: IUIAutomationElement *element : the root node to walk.
@@ -228,6 +252,8 @@ HRESULT WalkDesiredElementBuildCache(
 	} while (!queue.empty());
 	return S_OK;
 }
+
+// TODO: need to be refactored.
 // use WalkDesiredElementBuildCache in this function. But performance is worse 
 // than FindAll. 
 BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
@@ -429,6 +455,17 @@ BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
 	}
 	return true;
 }
+
+/**
+* @brief: TODO: need to be refactored.
+*         enumerate all element of foreground window which satisfies specific
+*         condition and paint hint on transparent window.
+*
+* @param: HWND hMainWnd: the window store global context.
+*       : HDC hdc: the HDC of transparent window.
+*
+* @return: BOOL
+*/
 BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
 	try {
         DWORD start_time = GetTickCount();
@@ -444,6 +481,26 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
 		HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
 		throw_if_fail(hr);
 
+        // this is used for fastSelectMode. add a event handler to detect
+        // element tree change.
+		if (pCtx->GetFastSelectState()) {
+			// add event handler to detect changing when in consercutive mode.
+			KeyMouse::EventHandler* pEHTemp = new KeyMouse::EventHandler(hMainWnd);
+			hr = pAutomation->AddStructureChangedEventHandler(pElement,
+				TreeScope_Subtree, NULL,
+				(IUIAutomationStructureChangedEventHandler*)pEHTemp);
+
+			pCtx->SetStructEventHandler(pEHTemp);
+			pCtx->SetElement(pElement);
+            // get the current foreground window's file name.
+			DWORD pid;
+			GetWindowThreadProcessId(hForeWnd, &pid);
+			HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+			CHAR lpFileName[200] = { 0 };
+			GetModuleFileNameExA(hProc, NULL, lpFileName, 200);
+			pCtx->SetPrevProcessName(std::string(lpFileName));
+			CloseHandle(hProc);
+		}
 		CComPtr<IUIAutomationElementArray> pElementArray;
 		// Define the condition by pTotalCondition to find all desired items.
         std::vector<PROPERTYID> vPropertyId = {
@@ -462,6 +519,9 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
                 );
 
         LONG i = 0;
+
+        // construct an condition array and use it for creating a big
+        // OrCondition.
         for (PROPERTYID PropertyId : vPropertyId) {
             IUIAutomationCondition *pCondition;
             VARIANT Val;
@@ -513,7 +573,8 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
                 pTotalOrCondition,
                 &pTotalCondition
                 );
-
+        
+        // add cache request for desired patterns and properties.
         CComPtr<IUIAutomationCacheRequest> pCacheRequest;
         hr = pAutomation->CreateCacheRequest(&pCacheRequest);
         throw_if_fail(hr);
@@ -588,9 +649,12 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
         cout<<total_time<<std::endl;
 
 		
-		// Traverse the items of ElementArray.
-        for(int i = 0; i < nChildrenNum; ++i) {
+		// Traverse the items of ElementArray and paint all hints on the screen.
+        for(int i = 0; i < nChildrenNum && nTotalLength > 0; ++i) {
             int length;
+			if (pThreadElementArray[i] == nullptr) {
+				continue;
+			}
             hr = pThreadElementArray[i]->get_Length(&length);
             throw_if_fail(hr);
             IUIAutomationElementArray *pElementArray = pThreadElementArray[i];
@@ -606,11 +670,8 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
                 POINT point;
                 point.x = Rect.left;
                 point.y = Rect.top;
-				ScreenToClient(hTransWnd, &point);
-                BOOL result = TextOut(hdc,
-                        point.x,
-                        point.y,
-                        psText, _tcslen(psText));
+
+				DrawTag(hMainWnd, hTransWnd, hdc, point, psText);
                 // insert the tag and Element into the keymap.
                 TagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
                              szTemp, pTempElement)); 
@@ -625,6 +686,14 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
 	}
 	return true;
 }
+
+/**
+* @brief: check whether focus on edit control.(not always works.)
+*
+* @param: 
+*
+* @return: bool: if focus on edit control, return true. else false.
+*/
 bool isFocusOnEdit() {
     if(pAutomation == nullptr)
         return false;
@@ -664,5 +733,50 @@ std::string GetLastErrorAsString()
     LocalFree(messageBuffer);
 
     return message;
+}
+
+void DrawTag(HWND hMainWnd, HWND hTransWnd, HDC hdc, POINT point, const TCHAR* psText) {
+	KeyMouse::Context *pCtx = 
+		reinterpret_cast<KeyMouse::Context *>(
+				GetClassLongPtr(hMainWnd, 0)
+				);
+	auto profile = pCtx->GetProfile();
+
+	ScreenToClient(hTransWnd, &point);
+	HPEN hpenOld = static_cast<HPEN>(SelectObject(hdc, GetStockObject(DC_PEN)));
+	HBRUSH hbrushOld = static_cast<HBRUSH>(SelectObject(hdc, GetStockObject(DC_BRUSH)));
+	// background color.
+	SetDCBrushColor(hdc, profile.background_color);
+    
+	int nHight = -MulDiv(profile.font.font_size, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+	HFONT hFont = CreateFont(nHight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+		ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, profile.font.font_name.c_str());
+
+	HFONT hfontOld = static_cast<HFONT>(SelectObject(hdc, hFont));
+	SIZE text_size;
+
+
+	GetTextExtentPoint(hdc, psText, _tcslen(psText), &text_size);
+	
+	double padding_ratio = 1.4;
+	RECT rect;
+	rect.left = point.x;
+	rect.top = point.y;
+	rect.right = static_cast<LONG>(point.x + text_size.cx * padding_ratio);
+	rect.bottom = static_cast<LONG>(point.y + text_size.cy * padding_ratio);
+	RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, text_size.cx / 2, text_size.cy / 2);
+	SetBkMode(hdc, TRANSPARENT);
+	SetBkColor(hdc, RGB(0, 0, 0));   // black
+	SetTextColor(hdc, profile.font.font_color);
+	
+	DrawText(hdc, psText, -1, &rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+	SelectObject(hdc, hpenOld);
+	SelectObject(hdc, hbrushOld);
+	SelectObject(hdc, hfontOld);
+
+	DeleteObject(hFont);
+
 }
 

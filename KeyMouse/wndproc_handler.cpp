@@ -1,8 +1,10 @@
+#include "stdafx.h"
 #include "wndproc_handler.h"
 #include "ctx.h"
 #include "utils.h"
 #include "hotkey_handler.h"
 #include "def.h"
+
 
 namespace KeyMouse {
 HKBinding WndProcHandler::select_hkbinding_[WndProcHandler::SELECT_HKBINDING_NUM] = {};
@@ -26,6 +28,14 @@ WndProcHandler::WndProcHandler() {
 WndProcHandler::~WndProcHandler() {
 }
 
+/**
+* @brief: initial struct array of WM_HOTKEY massages' lParam and corresponding 
+* process functions.
+*
+* @param: KeybindingMap& keybinding_map
+*
+* @return: void
+*/
 void WndProcHandler::InitialHKBinding(KeybindingMap& keybinding_map) {
 	select_hkbinding_[0].lParam = keybinding_map["escape"].lParam;
 	select_hkbinding_[0].fnPtr = fnHKProc_Escape_;
@@ -38,8 +48,19 @@ void WndProcHandler::InitialHKBinding(KeybindingMap& keybinding_map) {
 	normal_hkbinding_[2].fnPtr = fnHKProc_Scroll_;
 	normal_hkbinding_[3].lParam = keybinding_map["scrollUp"].lParam;
 	normal_hkbinding_[3].fnPtr = fnHKProc_Scroll_;
+	normal_hkbinding_[4].lParam = keybinding_map["fastSelectMode"].lParam;
+	normal_hkbinding_[4].fnPtr = fnHKProc_FastSelectMode_;
 
 }
+
+/**
+* @brief: the entrance of all windows process message.
+*
+* @param: UINT msg: the message from main window's WndProc.
+*       : WndEventArgs& Wea: struct of window event arguments.
+*
+* @return: LRESULT
+*/
 LRESULT WndProcHandler::HandlerEntrance(UINT msg, const WndEventArgs& Wea) {
 
 	for(int i = 0; i < EVENTHANDLER_NUM; i++) {
@@ -197,14 +218,38 @@ LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
 
 	RegCustomHotKey(Wea.hWnd, "escape");
 	RegisterTagHotKey(Wea.hWnd);
-
 	return 0;
 }
-LRESULT WndProcHandler::fnHKProc_Escape_(const WndEventArgs& Wea) {
+LRESULT WndProcHandler::fnHKProc_FastSelectMode_(const WndEventArgs& Wea) {
     Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
+	pCtx->SetFastSelectState(true);
+	PostMessage(Wea.hWnd, WM_HOTKEY, 0, keybinding_map["selectMode"].lParam);
+	return 0;
+}
 
-	 EscSelectMode_(Wea.hWnd);
-	 pCtx->SetMode(Context::NORMAL_MODE);
+LRESULT WndProcHandler::fnHKProc_Escape_(const WndEventArgs& Wea) {
+	Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+
+	EscSelectMode_(Wea.hWnd);
+	if (pCtx->GetFastSelectState()) {
+		HWND hForeWnd = pCtx->GetForeWindow();
+		CComPtr<IUIAutomationElement> pElement;
+		pElement = pCtx->GetElement();
+		//HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
+		const EventHandler* pEHTemp = pCtx->GetStructEventHandler();
+		if (pElement != nullptr && pEHTemp != nullptr) {
+			//HRESULT hr = pAutomation->RemoveStructureChangedEventHandler(pElement,
+			//		(IUIAutomationStructureChangedEventHandler*)pEHTemp);
+
+			HRESULT hr = pAutomation->RemoveAllEventHandlers();
+			pCtx->SetFastSelectState(false);
+		}
+		if (pEHTemp != nullptr) {
+			delete pEHTemp;
+		}
+	}
+	pCtx->SetMode(Context::NORMAL_MODE);
 
 	return 0;
 }
@@ -214,17 +259,9 @@ LRESULT WndProcHandler::fnHKProc_ToggleEnable_(const WndEventArgs& Wea) {
 	if(EnableState) {
 		pCtx->SetEnableState(false);
 		UnregisterAllHotKey(Wea.hWnd, true);
-		//UnregisterHotKey(Wea.hWnd, SHOWTAG);
-		//UnregisterHotKey(Wea.hWnd, SCROLLDOWN);
-		//UnregisterHotKey(Wea.hWnd, SCROLLUP);
 	} else {
 		pCtx->SetEnableState(true);
 		RegisterAllHotKey(Wea.hWnd, true);
-		//RegisterHotKey(Wea.hWnd, SHOWTAG, 
-		//		MOD_ALT | MOD_NOREPEAT, 
-		//		VK_OEM_1 /* ; */); 
-		//RegisterHotKey(Wea.hWnd, SCROLLDOWN, 0, 0x4A /* J */);
-		//RegisterHotKey(Wea.hWnd, SCROLLUP, 0, 0x4B /* K */); 
 	}
 
 	return 0;
@@ -250,8 +287,8 @@ void WndProcHandler::EscSelectMode_(HWND hWnd) {
                  RDW_INVALIDATE | RDW_ALLCHILDREN);
     DestroyWindow(handle);
 
+
 	UnregCustomHotKey(hWnd, "escape");
-	//UnregisterHotKey(hWnd, CLEANTAG);
     UnregisterTagHotKey(hWnd);
 
     pCtx->SetCurrentTag(string(TEXT("")));
@@ -261,6 +298,7 @@ void WndProcHandler::EscSelectMode_(HWND hWnd) {
 
 void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
     Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
+	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
     // If the VIrtualKey is out of our expectation.
     // i.e. VirtualKey is not in A - Z.
     if(VirtualKey < 0x41 || VirtualKey > 0x5A)
@@ -318,8 +356,8 @@ void WndProcHandler::ScrollHandler_(HWND hWnd, WORD VirtualKey) {
 }
 void WndProcHandler::SingleClick_(int x, int y)
 {
-	const double XSCALEFACTOR = 65535 / (GetSystemMetrics(SM_CXSCREEN) - 1);
-	const double YSCALEFACTOR = 65535 / (GetSystemMetrics(SM_CYSCREEN) - 1);
+	const double XSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CXSCREEN) - 1);
+	const double YSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CYSCREEN) - 1);
 
 	POINT cursorPos;
 	GetCursorPos(&cursorPos);
@@ -354,9 +392,7 @@ void WndProcHandler::InvokeElement_(CComPtr<IUIAutomationElement> &pElement) {
         CONTROLTYPEID iControlType;
         HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
-        if(iControlType == UIA_TabItemControlTypeId ||
-           iControlType == UIA_TreeItemControlTypeId ||
-		   iControlType == UIA_ButtonControlTypeId) {
+        if(iControlType == UIA_TreeItemControlTypeId) {
 
             // Sometimes the ClickablePoint is not actually clickable, but
             // bClickable equals 1. So comment the code.
@@ -397,8 +433,6 @@ void WndProcHandler::InvokeElement_(CComPtr<IUIAutomationElement> &pElement) {
 void WndProcHandler::EditInputForward_(HWND hWnd, WORD VirtualKey) {
 	UnregCustomHotKey(hWnd, "scrollDown");
 	UnregCustomHotKey(hWnd, "scrollUp");
-    //UnregisterHotKey(hWnd, SCROLLDOWN);
-    //UnregisterHotKey(hWnd, SCROLLUP);
     INPUT ip;
     ip.type = INPUT_KEYBOARD;
     ip.ki.wScan = 0;
@@ -411,8 +445,6 @@ void WndProcHandler::EditInputForward_(HWND hWnd, WORD VirtualKey) {
     SendInput(1, &ip, sizeof(INPUT));    //Key up
 	RegCustomHotKey(hWnd, "scrollDown");
 	RegCustomHotKey(hWnd, "scrollUp");
-    //RegisterHotKey(hWnd, SCROLLDOWN, 0, 0x4A /* J */);
-    //RegisterHotKey(hWnd, SCROLLUP, 0, 0x4B /* K */); 
 }
 
 bool WndProcHandler::CompareBlackList_() {

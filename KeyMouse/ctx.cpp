@@ -4,6 +4,7 @@
 #include "hotkey_handler.h"
 
 namespace KeyMouse {
+const int MAX_PATH_LEN = 200;
 // split std::string by delim.
 template <typename Out>
 void split(const std::string &s, char delim, Out result) {
@@ -17,9 +18,36 @@ void split(const std::string &s, char delim, Out result) {
 std::vector<std::string> split(const std::string &s, char delim) {
 	std::vector<std::string> elems;
 	split(s, delim, std::back_inserter(elems));
+	if (elems.empty()) {
+		elems.push_back(std::string(""));
+	}
 	return elems;
 }
 
+std::wstring Str2Wstr(std::string& src) {
+	size_t size = src.size() + 1;
+	std::wstring temp(size, L' ');
+	size_t out_size;
+	mbstowcs_s(&out_size , &temp[0], size, src.c_str(), size - 1);
+	temp.resize(out_size - 1);
+	return temp;
+}
+
+COLORREF Str2RGB(std::string color) {
+	COLORREF BGR = 0;
+	COLORREF RGB = 0;
+	color.erase(color.begin());
+
+	if (!std::all_of(color.begin(), color.end(), 
+		[](unsigned char c) {return std::isxdigit(c); }) || 
+		color.length() > 6) { 
+		return 0;
+	}
+	BGR = std::stol(color, nullptr, 16);
+	long xxx = (BGR & 0xFF) << 4;
+	RGB = (BGR & 0xFF) << 16 | (BGR & 0xFF00) | (BGR & 0xFF0000) >> 16;
+	return RGB;
+}
 
 std::map<std::string, WORD> Config::lo_map_ = {
 	{"alt", MOD_ALT},
@@ -106,27 +134,41 @@ std::map<std::string, int> Config::command_id_map_{
 	{"scrollUp", SCROLLUP},
 	{"scrollDown", SCROLLDOWN},
 	{"selectMode", SHOWTAG},
-	{"escape", CLEANTAG}
+	{"escape", CLEANTAG},
+	{"fastSelectMode", FASTSELECTMODE}
 };
 Config::Config() {
 
 }
 
-Config::Config(const std::string& json_name) {
+Config::Config(const std::wstring& json_name) {
+	has_error_ = false;
+	default_json_ = json({
+		{"profile", {
+			{"runOnStartUp", true},
+			{"fontColor", "#000000"},
+			{"fontSize", 10},
+			{"font", "Arial Rounded MT Bold"},
+			{"backgroundColor", "#66FFFF"}
+		}},
+		{"keybindings", {
+			{"toggleEnable", "alt+["},
+			{"scrollUp", "k"},
+			{"scrollDown", "j"},
+			{"selectMode", "alt+;"},
+			{"escape", "esc"},
+			{"fastSelectMode", "alt+j"}
+		}}
+		});
 	if (!LoadJson(json_name)) {
 		// set defalut configuration.
-		config_json_ = json({
-			{"profile", {
-				{"runOnStartUp", true}
-			}},
-			{"keybindings", {
-				{"toggleEnable", "f11"},
-				{"scrollUp", "k"},
-				{"scrollDown", "j"},
-				{"selectMode", "alt+;"},
-				{"escape", "esc"}
-			}}
-			});
+		config_json_ = default_json_;
+		
+	}
+	else {
+		// this step guarantees the left side are valid options, but not 
+		// guarantees valid option values on the right.
+		PatchCustomJson_();
 	}
 
 }
@@ -135,7 +177,7 @@ Config::~Config() {
 
 }
 
-bool Config::LoadJson(const std::string& json_name) {
+bool Config::LoadJson(const std::wstring& json_name) {
 	std::fstream json_file(json_name, std::ios::in);
 
 	if (!json_file.is_open()) {
@@ -155,7 +197,7 @@ bool Config::LoadJson(const std::string& json_name) {
 	return true;
 }
 
-bool Config::WriteJson(const std::string& json_name) {
+bool Config::WriteJson(const std::wstring& json_name) {
 	std::fstream json_file(json_name, std::ios::out);
 
 	if (!json_file.is_open()) {
@@ -175,58 +217,203 @@ bool Config::WriteJson(const std::string& json_name) {
 	return true;
 }
 
+// patch the custom configure json with default json.
+void Config::PatchCustomJson_() {
+	
+	json diff = json::diff(config_json_, default_json_);
+	json::iterator it = diff.begin();
+	while (it != diff.end()) {
+		// don't replace user's custom option.
+		if ((*it)["op"] == "replace") {
+			it = diff.erase(it);
+		}
+		else {
+			if ((*it)["op"] == "remove") {
+				if (!has_error_) {		// only warn user one time.
+					has_error_ = true;
+					std::wstring temp = Str2Wstr((*it)["path"].get<std::string>());
+					std::wstring output_str = TEXT("Unrecognized option: ") +
+						temp + TEXT(". Please check your configuration.");
+					MessageBox(nullptr, output_str.c_str(), TEXT("Warning"), MB_OK);
+				}
+			}
+			++it;
+		}
+
+	}
+	config_json_ = config_json_.patch(diff);
+
+}
+LPARAM Config::ExtractSingleKeyBinding_(std::string key, std::string binding) {
+	// remove all space in binding.
+	binding.erase(std::remove_if(binding.begin(), binding.end(), ::isspace), binding.end());
+
+	std::vector<std::string> split_keys = split(binding, '+');
+	WORD lo = 0;
+	WORD hi = 0;
+	for (auto& key_str : split_keys) {
+		auto search = lo_map_.find(key_str);
+		if (search != lo_map_.end()) {
+			lo = lo | lo_map_[key_str];
+		} 
+		else if (hi_map_.find(key_str) != hi_map_.end()) {
+			hi = hi | hi_map_[key_str];
+		}
+		else {
+			if (!has_error_) {		// only warn user one time.
+				has_error_ = true;
+				std::wstring temp = Str2Wstr(binding);
+				std::wstring output_str = TEXT("Unrecognized key binding: ") +
+					temp + TEXT(". Please check your configuration.");
+				MessageBox(nullptr, output_str.c_str(), TEXT("Warning"), MB_OK);
+				std::string defalut_binding = default_json_["keybindings"][key].get<std::string>();
+				return ExtractSingleKeyBinding_(key, defalut_binding);
+			}
+		}
+	}
+
+	return MAKELPARAM(lo, hi);
+
+}
 KeybindingMap Config::ExtractKeyBinding() {
 	json keybinding_json = config_json_["keybindings"];
 	KeybindingMap keybinding_map;
 
 	for (auto& keybinding : keybinding_json.items()) {
-		auto str = keybinding.value();
-		std::vector<std::string> split_keys = split(str, '+');
-		WORD lo = 0;
-		WORD hi = 0;
-		for (auto& key : split_keys) {
-			auto search = lo_map_.find(key);
-			if (search != lo_map_.end()) {
-				lo = lo | lo_map_[key];
-			} 
-			else if (hi_map_.find(key) != hi_map_.end()) {
-				hi = hi | hi_map_[key];
-			}
-		}
+		std::string str = keybinding.value();
+		LPARAM lp = ExtractSingleKeyBinding_(keybinding.key(), str);
 
 		auto key = keybinding.key();
-		IdlParam id_lParam = { command_id_map_[key], MAKELPARAM(lo, hi) };
-		keybinding_map.insert(
-			std::pair<std::string, IdlParam>(keybinding.key(), id_lParam)
-		);
+		if (command_id_map_.find(key) != command_id_map_.end()) {
+			IdlParam id_lParam = { command_id_map_[key], lp};
+			keybinding_map.insert(
+				std::pair<std::string, IdlParam>(keybinding.key(), id_lParam)
+			);
+		}
+		else {
+			if (!has_error_) {		// only warn user one time.
+				has_error_ = true;
+				std::wstring temp = Str2Wstr(key);
+				std::wstring output_str = TEXT("Unrecognized key binding command: ") +
+					temp + TEXT(". Please check your configuration.");
+				MessageBox(nullptr, output_str.c_str(), TEXT("Warning"), MB_OK);
+			}
+		}
 
 	}
 	return keybinding_map;
 
 }
 
+Profile Config::ExtractProfile() {
+	json profile_json = config_json_["profile"];
+	Profile profile;
+	profile.run_startup = profile_json["runOnStartUp"].get<bool>();
+	profile.background_color = Str2RGB(profile_json["backgroundColor"].get<std::string>());
+	profile.font.font_name = Str2Wstr(profile_json["font"].get<std::string>());
+	profile.font.font_size = profile_json["fontSize"].get<int>();
+	profile.font.font_color = Str2RGB(profile_json["fontColor"].get<std::string>());
+
+	return profile;
+}
+
+//------------------------------------------------------------------------
 Context::Context() {
-	json_name_ = std::string("./config.json");
+	app_directory_ = AppDir();
+	SetCurrentDirectory(app_directory_.c_str());
+
+	json_name_ = std::wstring(L"./config.json");
 	config_ = Config(json_name_);
 	keybinding_map_ = config_.ExtractKeyBinding();
+	profile_ = config_.ExtractProfile();
+	ApplyProfile_();
 
 	wndProc_handler_ = WndProcHandler();
 	wndProc_handler_.InitialHKBinding(keybinding_map_);
     current_tag_ = string(TEXT(""));
 	tag_map_ = PTagMap();
     enable_state_ = true;
+	on_fast_select_mode_ = false;
 	mode_ = NORMAL_MODE;
 }
 
 Context::~Context() {
 }
 
+void Context::ApplyProfile_() {
+	if (profile_.run_startup) {
+		WriteRegistryRUN_();
+	}
+	else {
+		DeleteRegistryRUN_();
+	}
+}
+std::wstring Context::AppDir() {
+	TCHAR buffer[MAX_PATH_LEN];
+    GetModuleFileName( NULL, buffer, MAX_PATH_LEN);
+    std::wstring::size_type pos = std::wstring(buffer).find_last_of( L"\\/" );
+    return std::wstring(buffer).substr(0, pos);
+}
+bool Context::WriteRegistryRUN_()
+{
+	HKEY hKey;
+	TCHAR pPath [MAX_PATH_LEN];
+
+	GetModuleFileName(0, pPath, MAX_PATH_LEN);
+
+	RegOpenKeyExA (HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_ALL_ACCESS, &hKey);
+	if (RegSetValueEx(hKey, L"KeyMouse", 0, REG_SZ, (BYTE*)pPath, MAX_PATH_LEN)) {
+		return false;
+	}
+	
+
+	RegCloseKey(hKey);
+	return true;
+}
+
+bool Context::DeleteRegistryRUN_()
+{
+	HKEY hKey;
+
+	RegOpenKeyExA (HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_ALL_ACCESS, &hKey);
+	if (RegDeleteValue(hKey, L"KeyMouse")) {
+		return false;
+	}
+	
+	RegCloseKey(hKey);
+	return true;
+}
 const  WndProcHandler& Context::GetWndProcHandler() const {
     return wndProc_handler_;
 }
 
 const KeybindingMap& Context::GetKeybindingMap() const {
 	return keybinding_map_;
+}
+
+const Profile& Context::GetProfile() const {
+	return profile_;
+}
+
+void Context::SetStructEventHandler(EventHandler* event_handler) {
+    pStruct_event_handler_ = event_handler;
+}
+const EventHandler* Context::GetStructEventHandler() const {
+    return pStruct_event_handler_;
+}
+
+void Context::SetElement(CComPtr<IUIAutomationElement>& pElement) {
+	pElement_ = pElement;
+}
+const CComPtr<IUIAutomationElement>& Context::GetElement() const {
+	return pElement_;
+}
+
+void Context::SetPrevProcessName(const std::string &name) {
+	prev_process_name_ = name;
+}
+const std::string &Context::GetPrevProcessName() const {
+	return prev_process_name_;
 }
 
 void Context::SetCurrentTag(const string &tag) {
@@ -257,6 +444,12 @@ void Context::SetEnableState(const bool flag) {
 
 const bool &Context::GetEnableState() const {
     return enable_state_;
+}
+void Context::SetFastSelectState(const bool flag) {
+	on_fast_select_mode_ = flag;
+}
+const bool& Context::GetFastSelectState() const {
+	return on_fast_select_mode_;
 }
 
 void Context::SetTransWindow(const HWND hWnd) {

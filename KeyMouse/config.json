@@ -1,14 +1,19 @@
 {
     "profile":
     {
-        "runOnStartUp": true
+        "runOnStartUp": false,
+        "backgroundColor": "#CCFFCC",
+        "fontColor": "#000000",
+        "fontSize": 10,
+        "font": "Arial Rounded MT Bold"
     },
     "keybindings":
     {
-        "toggleEnable": "f12",
+        "toggleEnable": "alt+[",
         "scrollUp": "k",
         "scrollDown": "j",
         "selectMode": "alt+;",
-        "escape": "esc"
+        "escape": "esc",
+        "fastSelectMode": "alt+j"
     }
 }

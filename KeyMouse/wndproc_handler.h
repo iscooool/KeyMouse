@@ -35,12 +35,16 @@ struct HKBinding {
 	LRESULT(*fnPtr)(const WndEventArgs&);
 };
 
+/**
+* @brief: handle all window messages.
+*
+*/
 class WndProcHandler
 {
 public:
 	static constexpr int EVENTHANDLER_NUM = 5;
 	static constexpr int SELECT_HKBINDING_NUM = 1;
-	static constexpr int NORMAL_HKBINDING_NUM = 4;
+	static constexpr int NORMAL_HKBINDING_NUM = 5;
 
 	WndProcHandler();
 	~WndProcHandler();
@@ -52,6 +56,7 @@ public:
 	static LRESULT fnWndProc_Paint_(const WndEventArgs& Wea);
 	static LRESULT fnWndProc_Destroy_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_SelectMode_(const WndEventArgs& Wea);
+	static LRESULT fnHKProc_FastSelectMode_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_Escape_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_ToggleEnable_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_Scroll_(const WndEventArgs& Wea);
