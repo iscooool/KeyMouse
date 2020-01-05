@@ -48,17 +48,17 @@ The options of profile is listed below:
 | fontSize| int| `10`| The font size of hint. |
 | font| string| `Arial Rounded MT Bold`| The font type of hint. You can find the font name supported by your system through **Settings->Personalization->fonts**. Make sure to use the full name of font.|
 
-The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+J`, `shift+alt+J`, `f11`.
+The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`.
 
 The opttion of hot keys is listed below:
 
 | Options       | Type           | Default  | Description|
 | ------------- | ------------- | ----------- |----------|
 | toggleEnable| string| `alt+[`| Enable/Disable this app.|
-| scrollUp| string| `K`| Scroll up.|
-| scrollDown| string| `J`| Scroll down.|
+| scrollUp| string| `k`| Scroll up.|
+| scrollDown| string| `j`| Scroll down.|
 | selectMode| string| `alt+;`| Enter select mode.|
-| fastSelectMode| string| `alt+J`| Enter fast select mode. the difference between select mode and fast select mode is that FSM will continually enter select mode. may fail in some situations.|
+| fastSelectMode| string| `alt+j`| Enter fast select mode. the difference between select mode and fast select mode is that FSM will continually enter select mode. may fail in some situations.|
 |escape| string| `esc`| Leave select mode.|
 
 
