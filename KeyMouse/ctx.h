@@ -10,6 +10,7 @@ using json = nlohmann::json;
 
 namespace KeyMouse {
 using PTagMap = std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>;
+using PElementVec = std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>>;
 
 struct Font {
 	std::wstring font_name;
@@ -20,6 +21,7 @@ struct Profile {
 	bool run_startup;
 	Font font;
 	COLORREF background_color;
+	int opacity;
 };
 
 /**
@@ -61,6 +63,10 @@ public:
         SELECT_MODE,
         INSERT_MODE
     };
+	enum ClickType {
+		RIGHT_CLICK,
+		LEFT_CLICK
+	};
     Context ();
     ~Context ();
 	std::wstring AppDir();
@@ -83,11 +89,15 @@ public:
     void SetMaxTagLen(const size_t len);
     const size_t &GetMaxTagLen() const;
     void SetTagMap(PTagMap& map);
+	void ClearTagMap();
+	void MergeTagMap(PTagMap& src_map);
     const PTagMap& GetTagMap() const;
     void SetEnableState(const bool flag);
     const bool &GetEnableState() const;
     void SetFastSelectState(const bool flag);
     const bool &GetFastSelectState() const;
+	void SetClickType(const ClickType type);
+	ClickType GetClickType() const;
     void SetTransWindow(const HWND hWnd);
     const HWND &GetTransWindow() const;
 	void SetForeWindow(const HWND hWnd);
@@ -117,6 +127,7 @@ private:
     // current status.
     bool enable_state_;
 	bool on_fast_select_mode_;
+	ClickType click_type_;
 
     HWND transparent_window_;
 	HWND fore_window_;

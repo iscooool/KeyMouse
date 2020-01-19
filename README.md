@@ -47,6 +47,7 @@ The options of profile is listed below:
 | fontColor| string| `#000000` |The font color of hint. Use RGB format|
 | fontSize| int| `10`| The font size of hint. |
 | font| string| `Arial Rounded MT Bold`| The font type of hint. You can find the font name supported by your system through **Settings->Personalization->fonts**. Make sure to use the full name of font.|
+| opacity| int| `100`| The opacity of tags. value is from 0-100.|
 
 The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`.
 
@@ -64,7 +65,7 @@ The option of hot keys is listed below:
 
 ## Build
 ### Prerequisities
-1. require json lib form [nlohmann/json](https://github.com/nlohmann/json).
+1. require json lib from [nlohmann/json](https://github.com/nlohmann/json).
 
 you can either add `--recurse-submodules` option when cloning this repo or get a copy from `nlohmann/json/single_include/nlohmann/json.hpp` to `/KeyMouse/KeyMouse/json/single_include/nlohmann/json.hpp`.
 ### Step

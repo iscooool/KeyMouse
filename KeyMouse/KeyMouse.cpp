@@ -64,6 +64,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     KeyMouse::UnregisterAllHotKey(hWnd);
 	pAutomation->Release();
 	CoUninitialize();
+
 	pCtx.reset();
 	_CrtDumpMemoryLeaks();
 

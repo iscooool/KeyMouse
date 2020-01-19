@@ -40,22 +40,80 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		HDC hDC = BeginPaint(hWnd, &ps);
 		SetTextColor(hDC, RGB(0, 0, 0));
 		
-		HWND *phMainWnd =
-			reinterpret_cast<HWND *>(
-				GetClassLongPtr(hWnd, 0)
-				);
-		auto Error = GetLastError();
+		HWND *phMainWnd = reinterpret_cast<HWND *>(GetClassLongPtr(hWnd, 0));
 		KeyMouse::Context *pCtx =
 			reinterpret_cast<KeyMouse::Context *>(
 				GetClassLongPtr(*phMainWnd, 0)
 				);
 		if (pCtx == nullptr)
 			break;
+        KeyMouse::PTagMap TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
+		KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
+		KeyMouse::PElementVec pTempElementVec;
+		pCtx->ClearTagMap();
 		pCtx->SetTransWindow(hWnd);
-		EnumConditionedElement(*phMainWnd, hDC);
-		//EnumConditionedElementTest(*phMainWnd, hDC);
+		HWND hForeWnd = pCtx->GetForeWindow();
+		// find the elements of froeground window.
+		pTempElementVec = EnumConditionedElement(*phMainWnd, hForeWnd, hDC);
+		if (pTempElementVec) {
+			pElementVec->insert(pElementVec->end(), 
+				pTempElementVec->begin(), pTempElementVec->end());
+		}
+		// find the elements of taskbar.
+		CComPtr<IUIAutomationElement> pDesktop;
+		HRESULT hr = pAutomation->GetRootElement(&pDesktop);
+		throw_if_fail(hr);
 
+		IUIAutomationCondition *pCondition;
+		VARIANT Val;
+		Val.vt = VT_BSTR;
+		Val.bstrVal = SysAllocString(TEXT("Shell_TrayWnd"));
+		hr = pAutomation->CreatePropertyCondition(UIA_ClassNamePropertyId,
+			Val,
+			&pCondition);
+		throw_if_fail(hr);
+
+		CComPtr<IUIAutomationElement> pTaskBar;
+		pDesktop->FindFirst(TreeScope_Children, pCondition, &pTaskBar);
+		if (pTaskBar) {
+			UIA_HWND hTaskBar;
+			pTaskBar->get_CurrentNativeWindowHandle(&hTaskBar);
+			if (hForeWnd != static_cast<HWND>(hTaskBar)) {
+				pTempElementVec = EnumConditionedElement(*phMainWnd, static_cast<HWND>(hTaskBar), hDC);
+				if (pTempElementVec) {
+					pElementVec->insert(pElementVec->end(),
+						pTempElementVec->begin(), pTempElementVec->end());
+				}
+			}
+		}
+		KeyMouse::TagCreator TC;
+        std::queue<string> TagQueue = TC.AllocTag(pElementVec->size());
+        // the last one of the queue must be the longest one.
+        pCtx->SetMaxTagLen(TagQueue.back().length());
+
+		// Traverse the items of ElementArray and paint all hints on the screen.
+        for(auto& pTempElement : *pElementVec) {
+			RECT Rect;
+			pTempElement->get_CachedBoundingRectangle(&Rect);
+			string szTemp = TagQueue.front();
+			TagQueue.pop();
+			// print the tag on the screen.
+			const TCHAR *psText = szTemp.c_str();
+			POINT point;
+			point.x = Rect.left;
+			point.y = Rect.top;
+
+			DrawTag(*phMainWnd, hWnd, hDC, point, psText);
+			// insert the tag and Element into the keymap.
+			TagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
+						 szTemp, pTempElement)); 
+        }
+		pCtx->SetTagMap(TagMap);
+
+		VariantClear(&Val);
+	
 		EndPaint(hWnd, &ps);
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 
 	}
 	break;
@@ -139,8 +197,12 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 	InvertRgn(GetDC(hWnd), GGG);
 	SetWindowRgn(hWnd, GGG, false);
 
+	KeyMouse::Context *pCtx = reinterpret_cast<KeyMouse::Context *>(
+				GetClassLongPtr(hMainWnd, 0)
+				);
+	int opacity = pCtx->GetProfile().opacity;
 	COLORREF RRR = RGB(255, 0, 255);
-	SetLayeredWindowAttributes(hWnd, RRR, (BYTE)0,  LWA_COLORKEY);
+	SetLayeredWindowAttributes(hWnd, RRR, (BYTE)255 * opacity / 100,  LWA_ALPHA | LWA_COLORKEY);
 
 	ShowWindow(hWnd, SW_SHOWNORMAL);
 	UpdateWindow(hWnd);
@@ -464,9 +526,9 @@ BOOL EnumConditionedElementTest(HWND hMainWnd, HDC hdc) {
 * @param: HWND hMainWnd: the window store global context.
 *       : HDC hdc: the HDC of transparent window.
 *
-* @return: BOOL
+* @return: PElementVec: a vector of all elements found in foreground window.
 */
-BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
+KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd,HWND hForeWnd, HDC hdc) {
 	try {
         DWORD start_time = GetTickCount();
 
@@ -475,7 +537,7 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
             reinterpret_cast<KeyMouse::Context *>(
                     GetClassLongPtr(hMainWnd, 0)
                     );
-		HWND hForeWnd = pCtx->GetForeWindow();
+
 		HWND hTransWnd = pCtx->GetTransWindow();
 		CComPtr<IUIAutomationElement> pElement;
 		HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
@@ -510,7 +572,8 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
             UIA_TabItemControlTypeId,
             UIA_HyperlinkControlTypeId,
 			UIA_SplitButtonControlTypeId,
-            UIA_ScrollBarControlTypeId
+            UIA_ScrollBarControlTypeId,
+			UIA_MenuItemControlTypeId
         };
         SAFEARRAY *pConditionVector = SafeArrayCreateVector(
                 VT_UNKNOWN,
@@ -638,12 +701,7 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
         hr = SafeArrayDestroy(pConditionVector);
         throw_if_fail(hr);
 
-        KeyMouse::PTagMap TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
-
-		KeyMouse::TagCreator TC;
-        std::queue<string> TagQueue = TC.AllocTag(nTotalLength);
-        // the last one of the queue must be the longest one.
-        pCtx->SetMaxTagLen(TagQueue.back().length());
+		KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
         DWORD end_time = GetTickCount();
         DWORD total_time = end_time - start_time;
         cout<<total_time<<std::endl;
@@ -661,30 +719,17 @@ BOOL EnumConditionedElement(HWND hMainWnd, HDC hdc) {
             for (int j = 0; j < length; ++j) {
                 CComPtr<IUIAutomationElement> pTempElement;
                 pElementArray->GetElement(j, &pTempElement);
-                RECT Rect;
-                pTempElement->get_CachedBoundingRectangle(&Rect);
-                string szTemp = TagQueue.front();
-                TagQueue.pop();
-                // print the tag on the screen.
-                const TCHAR *psText = szTemp.c_str();
-                POINT point;
-                point.x = Rect.left;
-                point.y = Rect.top;
-
-				DrawTag(hMainWnd, hTransWnd, hdc, point, psText);
-                // insert the tag and Element into the keymap.
-                TagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
-                             szTemp, pTempElement)); 
+				pElementVec->push_back(pTempElement);
 
             }
         }
-        pCtx->SetTagMap(TagMap);
         LockWindowUpdate(hForeWnd);
 		
+		return pElementVec;
 	}
 	catch (_com_error err) {
 	}
-	return true;
+	return nullptr;
 }
 
 /**
@@ -743,6 +788,7 @@ void DrawTag(HWND hMainWnd, HWND hTransWnd, HDC hdc, POINT point, const TCHAR* p
 	auto profile = pCtx->GetProfile();
 
 	ScreenToClient(hTransWnd, &point);
+
 	HPEN hpenOld = static_cast<HPEN>(SelectObject(hdc, GetStockObject(DC_PEN)));
 	HBRUSH hbrushOld = static_cast<HBRUSH>(SelectObject(hdc, GetStockObject(DC_BRUSH)));
 	// background color.
@@ -756,7 +802,6 @@ void DrawTag(HWND hMainWnd, HWND hTransWnd, HDC hdc, POINT point, const TCHAR* p
 	HFONT hfontOld = static_cast<HFONT>(SelectObject(hdc, hFont));
 	SIZE text_size;
 
-
 	GetTextExtentPoint(hdc, psText, _tcslen(psText), &text_size);
 	
 	double padding_ratio = 1.4;
@@ -765,7 +810,7 @@ void DrawTag(HWND hMainWnd, HWND hTransWnd, HDC hdc, POINT point, const TCHAR* p
 	rect.top = point.y;
 	rect.right = static_cast<LONG>(point.x + text_size.cx * padding_ratio);
 	rect.bottom = static_cast<LONG>(point.y + text_size.cy * padding_ratio);
-	RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, text_size.cx / 2, text_size.cy / 2);
+	RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, text_size.cx / 4, text_size.cy / 4);
 	SetBkMode(hdc, TRANSPARENT);
 	SetBkColor(hdc, RGB(0, 0, 0));   // black
 	SetTextColor(hdc, profile.font.font_color);

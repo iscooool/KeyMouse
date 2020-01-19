@@ -28,12 +28,14 @@
 #define  HOTKEY_X   24
 #define  HOTKEY_Y   25
 #define  HOTKEY_Z   26
+
 #define  SHOWTAG    27
 #define  CLEANTAG   28
 #define  TOGGLEENABLE 29
 #define  SCROLLUP 30
 #define  SCROLLDOWN 31
 #define  FASTSELECTMODE 32
+#define  RIGHTCLICKPREFIX 33
 namespace KeyMouse {
 BOOL RegCustomHotKey(HWND hWnd, std::string key);
 BOOL UnregCustomHotKey(HWND hWnd, std::string key);

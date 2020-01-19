@@ -11,7 +11,6 @@
 // Windows Header Files:
 #include <windows.h>
 #include <WinUser.h>
-
 // C RunTime Header Files
 #include <stdlib.h>
 #include <malloc.h>

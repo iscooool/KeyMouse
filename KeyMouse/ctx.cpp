@@ -135,7 +135,8 @@ std::map<std::string, int> Config::command_id_map_{
 	{"scrollDown", SCROLLDOWN},
 	{"selectMode", SHOWTAG},
 	{"escape", CLEANTAG},
-	{"fastSelectMode", FASTSELECTMODE}
+	{"fastSelectMode", FASTSELECTMODE},
+	{"rightClickPrefix", RIGHTCLICKPREFIX}
 };
 Config::Config() {
 
@@ -149,7 +150,8 @@ Config::Config(const std::wstring& json_name) {
 			{"fontColor", "#000000"},
 			{"fontSize", 10},
 			{"font", "Arial Rounded MT Bold"},
-			{"backgroundColor", "#66FFFF"}
+			{"backgroundColor", "#66FFFF"},
+			{"opacity", 100}
 		}},
 		{"keybindings", {
 			{"toggleEnable", "alt+["},
@@ -157,7 +159,8 @@ Config::Config(const std::wstring& json_name) {
 			{"scrollDown", "j"},
 			{"selectMode", "alt+;"},
 			{"escape", "esc"},
-			{"fastSelectMode", "alt+j"}
+			{"fastSelectMode", "alt+j"},
+			{"rightClickPrefix", "shift+a"}
 		}}
 		});
 	if (!LoadJson(json_name)) {
@@ -313,6 +316,7 @@ Profile Config::ExtractProfile() {
 	profile.font.font_name = Str2Wstr(profile_json["font"].get<std::string>());
 	profile.font.font_size = profile_json["fontSize"].get<int>();
 	profile.font.font_color = Str2RGB(profile_json["fontColor"].get<std::string>());
+	profile.opacity = profile_json["opacity"].get<int>();
 
 	return profile;
 }
@@ -334,6 +338,7 @@ Context::Context() {
 	tag_map_ = PTagMap();
     enable_state_ = true;
 	on_fast_select_mode_ = false;
+	click_type_ = LEFT_CLICK;
 	mode_ = NORMAL_MODE;
 }
 
@@ -434,6 +439,20 @@ const size_t &Context::GetMaxTagLen() const {
 void Context::SetTagMap(PTagMap& map) {
     tag_map_ = std::move(map);
 }
+void Context::ClearTagMap() {
+	if (tag_map_ != nullptr) {
+		tag_map_->clear();
+	}
+}
+void Context::MergeTagMap(PTagMap& src_map) {
+	if (tag_map_ == nullptr) {
+		tag_map_ = std::move(src_map);
+	}
+	else {
+		tag_map_->insert(src_map->begin(), src_map->end());
+	}
+}
+
 const PTagMap& Context::GetTagMap() const {
     return tag_map_;
 }
@@ -450,6 +469,12 @@ void Context::SetFastSelectState(const bool flag) {
 }
 const bool& Context::GetFastSelectState() const {
 	return on_fast_select_mode_;
+}
+void Context::SetClickType(const ClickType type) {
+	click_type_ = type;
+}
+Context::ClickType Context::GetClickType() const {
+	return click_type_;
 }
 
 void Context::SetTransWindow(const HWND hWnd) {

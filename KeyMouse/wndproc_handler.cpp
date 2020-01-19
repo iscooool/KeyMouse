@@ -39,6 +39,8 @@ WndProcHandler::~WndProcHandler() {
 void WndProcHandler::InitialHKBinding(KeybindingMap& keybinding_map) {
 	select_hkbinding_[0].lParam = keybinding_map["escape"].lParam;
 	select_hkbinding_[0].fnPtr = fnHKProc_Escape_;
+	select_hkbinding_[1].lParam = keybinding_map["rightClickPrefix"].lParam;
+	select_hkbinding_[1].fnPtr = fnHKProc_RightClickPrefix_;
 
 	normal_hkbinding_[0].lParam = keybinding_map["selectMode"].lParam;
 	normal_hkbinding_[0].fnPtr = fnHKProc_SelectMode_;
@@ -174,6 +176,7 @@ LRESULT WndProcHandler::fnWndProc_Hotkey_(const WndEventArgs& Wea) {
 	else if (Mode == Context::SELECT_MODE) {
 		for (int i = 0; i < SELECT_HKBINDING_NUM; i++) {
 			if (select_hkbinding_[i].lParam == Wea.lParam) {
+
 				return (*select_hkbinding_[i].fnPtr)(Wea);
 			}
 		}
@@ -228,6 +231,11 @@ LRESULT WndProcHandler::fnHKProc_FastSelectMode_(const WndEventArgs& Wea) {
 	return 0;
 }
 
+LRESULT WndProcHandler::fnHKProc_RightClickPrefix_(const WndEventArgs& Wea) {
+    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	pCtx->SetClickType(Context::RIGHT_CLICK);
+	return 0;
+}
 LRESULT WndProcHandler::fnHKProc_Escape_(const WndEventArgs& Wea) {
 	Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
 
@@ -294,6 +302,7 @@ void WndProcHandler::EscSelectMode_(HWND hWnd) {
     pCtx->SetCurrentTag(string(TEXT("")));
     pCtx->SetMaxTagLen(0);
     pCtx->SetMode(Context::NORMAL_MODE);
+	pCtx->SetClickType(Context::LEFT_CLICK);
 }
 
 void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
@@ -316,9 +325,16 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
     if(pTagMap->find(szTag) != pTagMap->end()) {
         //MessageBox(nullptr, TEXT("test"), 
                 //TEXT("contains"),  MB_OK);
-        CComPtr<IUIAutomationElement> pElement =
-            (*pTagMap)[szTag];
-        InvokeElement_(pElement);
+        CComPtr<IUIAutomationElement> pElement = (*pTagMap)[szTag];
+		if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
+			RECT Rect;
+			pElement->get_CachedBoundingRectangle(&Rect);
+			RightClick_((Rect.left + Rect.right) / 2, 
+					(Rect.top + Rect.bottom) /2);
+		}
+		else {
+			InvokeElement_(pElement);
+		}
 
         EscSelectMode_(hWnd);
     }
@@ -387,12 +403,45 @@ void WndProcHandler::SingleClick_(int x, int y)
 	SendInput(1, &Input, sizeof(INPUT));
 }
 
+void WndProcHandler::RightClick_(int x, int y)
+{
+	const double XSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CXSCREEN) - 1);
+	const double YSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CYSCREEN) - 1);
+
+	POINT cursorPos;
+	GetCursorPos(&cursorPos);
+
+	double cx = cursorPos.x * XSCALEFACTOR;
+	double cy = cursorPos.y * YSCALEFACTOR;
+
+	double nx = x * XSCALEFACTOR;
+	double ny = y * YSCALEFACTOR;
+
+	INPUT Input = { 0 };
+	Input.type = INPUT_MOUSE;
+
+	Input.mi.dx = (LONG)nx;
+	Input.mi.dy = (LONG)ny;
+
+	Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_RIGHTDOWN | MOUSEEVENTF_RIGHTUP;
+
+	SendInput(1, &Input, sizeof(INPUT));
+	
+
+	//Input.mi.dx = (LONG)cx;
+	//Input.mi.dy = (LONG)cy;
+
+	//Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+
+	//SendInput(1, &Input, sizeof(INPUT));
+}
 void WndProcHandler::InvokeElement_(CComPtr<IUIAutomationElement> &pElement) {
     try {
         CONTROLTYPEID iControlType;
         HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
-        if(iControlType == UIA_TreeItemControlTypeId) {
+        if(iControlType == UIA_TreeItemControlTypeId ||
+			iControlType == UIA_ButtonControlTypeId) {
 
             // Sometimes the ClickablePoint is not actually clickable, but
             // bClickable equals 1. So comment the code.
