@@ -41,6 +41,8 @@ void WndProcHandler::InitialHKBinding(KeybindingMap& keybinding_map) {
 	select_hkbinding_[0].fnPtr = fnHKProc_Escape_;
 	select_hkbinding_[1].lParam = keybinding_map["rightClickPrefix"].lParam;
 	select_hkbinding_[1].fnPtr = fnHKProc_RightClickPrefix_;
+	select_hkbinding_[2].lParam = keybinding_map["singleClickPrefix"].lParam;
+	select_hkbinding_[2].fnPtr = fnHKProc_SingleClickPrefix_;
 
 	normal_hkbinding_[0].lParam = keybinding_map["selectMode"].lParam;
 	normal_hkbinding_[0].fnPtr = fnHKProc_SelectMode_;
@@ -234,6 +236,29 @@ LRESULT WndProcHandler::fnHKProc_FastSelectMode_(const WndEventArgs& Wea) {
 LRESULT WndProcHandler::fnHKProc_RightClickPrefix_(const WndEventArgs& Wea) {
     Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
 	pCtx->SetClickType(Context::RIGHT_CLICK);
+
+	if (pCtx->GetFastSelectState()) {
+		HWND hForeWnd = pCtx->GetForeWindow();
+		CComPtr<IUIAutomationElement> pElement;
+		pElement = pCtx->GetElement();
+		//HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
+		const EventHandler* pEHTemp = pCtx->GetStructEventHandler();
+		if (pElement != nullptr && pEHTemp != nullptr) {
+			//HRESULT hr = pAutomation->RemoveStructureChangedEventHandler(pElement,
+			//		(IUIAutomationStructureChangedEventHandler*)pEHTemp);
+
+			HRESULT hr = pAutomation->RemoveAllEventHandlers();
+			pCtx->SetFastSelectState(false);
+		}
+		if (pEHTemp != nullptr) {
+			delete pEHTemp;
+		}
+	}
+	return 0;
+}
+LRESULT WndProcHandler::fnHKProc_SingleClickPrefix_(const WndEventArgs& Wea) {
+    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	pCtx->SetClickType(Context::SINGLE_LEFT_CLICK);
 	return 0;
 }
 LRESULT WndProcHandler::fnHKProc_Escape_(const WndEventArgs& Wea) {
@@ -316,9 +341,9 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
     TCHAR cInputChar = MapVirtualKey(VirtualKey, MAPVK_VK_TO_CHAR);
     size_t iMaxTagLen = pCtx->GetMaxTagLen();
     string szTag = pCtx->GetCurrentTag();
-    const std::unique_ptr<
-        std::map<string, CComPtr<IUIAutomationElement>>> 
-        &pTagMap = pCtx->GetTagMap();
+
+	const KeyMouse::PTagMap& pTagMap = pCtx->GetTagMap();
+	const KeyMouse::PTagMap& pWindowMap = pCtx->GetWindowMap();
 
     szTag.append(string(1, cInputChar));
     pCtx->SetCurrentTag(szTag);
@@ -332,12 +357,23 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
 			RightClick_((Rect.left + Rect.right) / 2, 
 					(Rect.top + Rect.bottom) /2);
 		}
+		else if (pCtx->GetClickType() == Context::SINGLE_LEFT_CLICK) {
+			RECT Rect;
+			pElement->get_CachedBoundingRectangle(&Rect);
+			SingleClick_((Rect.left + Rect.right) / 2, 
+					(Rect.top + Rect.bottom) /2);
+
+		}
 		else {
 			InvokeElement_(pElement);
 		}
 
         EscSelectMode_(hWnd);
-    }
+	}
+	else if (pWindowMap->find(szTag) != pWindowMap->end()) { // switch window.
+        CComPtr<IUIAutomationElement> pElement = (*pWindowMap)[szTag];
+		pElement->SetFocus();
+	}
     if(iMaxTagLen <= szTag.length())
         EscSelectMode_(hWnd);
 }

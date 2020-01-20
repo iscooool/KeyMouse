@@ -41,6 +41,7 @@ BOOL RegisterTagHotKey(HWND hWnd) {
 		UnregCustomHotKey(hWnd, "scrollUp") &&
 		// register hotkey for tags input.
 		RegCustomHotKey(hWnd, "rightClickPrefix") &&
+		RegCustomHotKey(hWnd, "singleClickPrefix") &&
 		RegisterHotKey(hWnd, HOTKEY_A, 0, 0x41 /* A */) &&
 		RegisterHotKey(hWnd, HOTKEY_B, 0, 0x42 /* B */) &&
 		RegisterHotKey(hWnd, HOTKEY_C, 0, 0x43 /* C */) &&
@@ -85,6 +86,7 @@ BOOL UnregisterAllHotKey(HWND hWnd, bool exclude_toggle) {
 BOOL UnregisterTagHotKey(HWND hWnd) {
 	return (
 		UnregCustomHotKey(hWnd, "rightClickPrefix") &&
+		UnregCustomHotKey(hWnd, "singleClickPrefix") &&
 		UnregisterHotKey(hWnd, HOTKEY_A) &&
 		UnregisterHotKey(hWnd, HOTKEY_B) &&
 		UnregisterHotKey(hWnd, HOTKEY_C) &&

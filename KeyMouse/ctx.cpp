@@ -136,7 +136,8 @@ std::map<std::string, int> Config::command_id_map_{
 	{"selectMode", SHOWTAG},
 	{"escape", CLEANTAG},
 	{"fastSelectMode", FASTSELECTMODE},
-	{"rightClickPrefix", RIGHTCLICKPREFIX}
+	{"rightClickPrefix", RIGHTCLICKPREFIX},
+	{"singleClickPrefix", SINGLELEFTCLICKPREFIX}
 };
 Config::Config() {
 
@@ -150,7 +151,11 @@ Config::Config(const std::wstring& json_name) {
 			{"fontColor", "#000000"},
 			{"fontSize", 10},
 			{"font", "Arial Rounded MT Bold"},
-			{"backgroundColor", "#66FFFF"},
+			{"backgroundColor", "#CCFFCC"},
+			{"windowFontColor", "#000000"},
+			{"windowFontSize", 12},
+			{"windowFont", "Arial Rounded MT Bold"},
+			{"windowBkgdColor", "#CCBBAA"},
 			{"opacity", 100}
 		}},
 		{"keybindings", {
@@ -160,7 +165,8 @@ Config::Config(const std::wstring& json_name) {
 			{"selectMode", "alt+;"},
 			{"escape", "esc"},
 			{"fastSelectMode", "alt+j"},
-			{"rightClickPrefix", "shift+a"}
+			{"rightClickPrefix", "shift+a"},
+			{"singleClickPrefix", "shift+s"}
 		}}
 		});
 	if (!LoadJson(json_name)) {
@@ -312,10 +318,14 @@ Profile Config::ExtractProfile() {
 	json profile_json = config_json_["profile"];
 	Profile profile;
 	profile.run_startup = profile_json["runOnStartUp"].get<bool>();
-	profile.background_color = Str2RGB(profile_json["backgroundColor"].get<std::string>());
+	profile.font.background_color = Str2RGB(profile_json["backgroundColor"].get<std::string>());
 	profile.font.font_name = Str2Wstr(profile_json["font"].get<std::string>());
 	profile.font.font_size = profile_json["fontSize"].get<int>();
 	profile.font.font_color = Str2RGB(profile_json["fontColor"].get<std::string>());
+	profile.window_tag_font.background_color = Str2RGB(profile_json["windowBkgdColor"].get<std::string>());
+	profile.window_tag_font.font_name = Str2Wstr(profile_json["windowFont"].get<std::string>());
+	profile.window_tag_font.font_size = profile_json["windowFontSize"].get<int>();
+	profile.window_tag_font.font_color = Str2RGB(profile_json["windowFontColor"].get<std::string>());
 	profile.opacity = profile_json["opacity"].get<int>();
 
 	return profile;
@@ -457,6 +467,12 @@ const PTagMap& Context::GetTagMap() const {
     return tag_map_;
 }
 
+void Context::SetWindowMap(PTagMap& map) {
+	window_map_ = std::move(map);
+}
+const PTagMap& Context::GetWindowMap() const {
+	return window_map_;
+}
 void Context::SetEnableState(const bool flag) {
     enable_state_ = flag;
 }

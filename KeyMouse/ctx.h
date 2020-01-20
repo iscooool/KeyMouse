@@ -15,12 +15,13 @@ using PElementVec = std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>>;
 struct Font {
 	std::wstring font_name;
 	COLORREF font_color;
+	COLORREF background_color;
 	int font_size;
 };
 struct Profile {
 	bool run_startup;
 	Font font;
-	COLORREF background_color;
+	Font window_tag_font;
 	int opacity;
 };
 
@@ -65,7 +66,8 @@ public:
     };
 	enum ClickType {
 		RIGHT_CLICK,
-		LEFT_CLICK
+		LEFT_CLICK,
+		SINGLE_LEFT_CLICK
 	};
     Context ();
     ~Context ();
@@ -92,6 +94,8 @@ public:
 	void ClearTagMap();
 	void MergeTagMap(PTagMap& src_map);
     const PTagMap& GetTagMap() const;
+    void SetWindowMap(PTagMap& map);
+    const PTagMap& GetWindowMap() const;
     void SetEnableState(const bool flag);
     const bool &GetEnableState() const;
     void SetFastSelectState(const bool flag);
@@ -123,6 +127,7 @@ private:
     size_t max_tag_len_;
     // (hints: UIAutomationElement) map.
     PTagMap tag_map_;
+    PTagMap window_map_;
     
     // current status.
     bool enable_state_;
