@@ -28,7 +28,7 @@
         "windowBkgdColor": "#CCBBAA",
         "windowFontSize": 11,
         "opacity": 70,
-		"invertClickType": false
+	"invertClickType": false
     },
     "keybindings":
     {
