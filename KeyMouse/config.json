@@ -1,19 +1,25 @@
 {
     "profile":
     {
-        "runOnStartUp": false,
+        "runOnStartUp": true,
         "backgroundColor": "#CCFFCC",
         "fontColor": "#000000",
-        "fontSize": 10,
-        "font": "Arial Rounded MT Bold"
+        "fontSize": 9,
+        "font": "Arial Rounded MT Bold",
+        "windowBkgdColor": "#CCBBAA",
+        "windowFontSize": 11,
+        "opacity": 70,
+        "invertClickType": false
     },
     "keybindings":
     {
         "toggleEnable": "alt+[",
-        "scrollUp": "k",
-        "scrollDown": "j",
+        "scrollUp": "alt+k",
+        "scrollDown": "alt+j",
         "selectMode": "alt+;",
         "escape": "esc",
-        "fastSelectMode": "alt+j"
+        "fastSelectMode": "alt+i",
+        "rightClickPrefix": "shift+a",
+        "singleClickPrefix": "shift+s"
     }
 }

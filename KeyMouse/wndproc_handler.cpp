@@ -235,7 +235,13 @@ LRESULT WndProcHandler::fnHKProc_FastSelectMode_(const WndEventArgs& Wea) {
 
 LRESULT WndProcHandler::fnHKProc_RightClickPrefix_(const WndEventArgs& Wea) {
     Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
-	pCtx->SetClickType(Context::RIGHT_CLICK);
+	auto profile = pCtx->GetProfile();
+	if (profile.invert_click_type) {
+		pCtx->SetClickType(Context::SINGLE_LEFT_CLICK);
+	}
+	else {
+		pCtx->SetClickType(Context::SINGLE_RIGHT_CLICK);
+	}
 
 	if (pCtx->GetFastSelectState()) {
 		HWND hForeWnd = pCtx->GetForeWindow();
@@ -258,7 +264,13 @@ LRESULT WndProcHandler::fnHKProc_RightClickPrefix_(const WndEventArgs& Wea) {
 }
 LRESULT WndProcHandler::fnHKProc_SingleClickPrefix_(const WndEventArgs& Wea) {
     Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
-	pCtx->SetClickType(Context::SINGLE_LEFT_CLICK);
+	auto profile = pCtx->GetProfile();
+	if (profile.invert_click_type) {
+		pCtx->SetClickType(Context::SINGLE_RIGHT_CLICK);
+	}
+	else {
+		pCtx->SetClickType(Context::SINGLE_LEFT_CLICK);
+	}
 	return 0;
 }
 LRESULT WndProcHandler::fnHKProc_Escape_(const WndEventArgs& Wea) {
@@ -327,7 +339,13 @@ void WndProcHandler::EscSelectMode_(HWND hWnd) {
     pCtx->SetCurrentTag(string(TEXT("")));
     pCtx->SetMaxTagLen(0);
     pCtx->SetMode(Context::NORMAL_MODE);
-	pCtx->SetClickType(Context::LEFT_CLICK);
+	auto profile = pCtx->GetProfile();
+	if (profile.invert_click_type) {
+		pCtx->SetClickType(Context::RIGHT_CLICK);
+	}
+	else {
+		pCtx->SetClickType(Context::LEFT_CLICK);
+	}
 }
 
 void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
@@ -351,21 +369,21 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
         //MessageBox(nullptr, TEXT("test"), 
                 //TEXT("contains"),  MB_OK);
         CComPtr<IUIAutomationElement> pElement = (*pTagMap)[szTag];
-		if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
+		if (pCtx->GetClickType() == Context::SINGLE_RIGHT_CLICK) {
 			RECT Rect;
 			pElement->get_CachedBoundingRectangle(&Rect);
 			RightClick_((Rect.left + Rect.right) / 2, 
-					(Rect.top + Rect.bottom) /2);
+					(Rect.top + Rect.bottom) /2, 1);
 		}
 		else if (pCtx->GetClickType() == Context::SINGLE_LEFT_CLICK) {
 			RECT Rect;
 			pElement->get_CachedBoundingRectangle(&Rect);
-			SingleClick_((Rect.left + Rect.right) / 2, 
-					(Rect.top + Rect.bottom) /2);
+			LeftClick_((Rect.left + Rect.right) / 2, 
+					(Rect.top + Rect.bottom) /2, 1);
 
 		}
 		else {
-			InvokeElement_(pElement);
+			InvokeElement_(pElement, hWnd);
 		}
 
         EscSelectMode_(hWnd);
@@ -406,7 +424,7 @@ void WndProcHandler::ScrollHandler_(HWND hWnd, WORD VirtualKey) {
             }
     }
 }
-void WndProcHandler::SingleClick_(int x, int y)
+void WndProcHandler::LeftClick_(int x, int y, int time)
 {
 	const double XSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CXSCREEN) - 1);
 	const double YSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CYSCREEN) - 1);
@@ -428,7 +446,9 @@ void WndProcHandler::SingleClick_(int x, int y)
 
 	Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP;
 
-	SendInput(1, &Input, sizeof(INPUT));
+	for (int i = 0; i < time; i++) {
+		SendInput(1, &Input, sizeof(INPUT));
+	}
 	
 
 	Input.mi.dx = (LONG)cx;
@@ -439,7 +459,7 @@ void WndProcHandler::SingleClick_(int x, int y)
 	SendInput(1, &Input, sizeof(INPUT));
 }
 
-void WndProcHandler::RightClick_(int x, int y)
+void WndProcHandler::RightClick_(int x, int y, int time)
 {
 	const double XSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CXSCREEN) - 1);
 	const double YSCALEFACTOR = 65535.0 / (GetSystemMetrics(SM_CYSCREEN) - 1);
@@ -461,21 +481,26 @@ void WndProcHandler::RightClick_(int x, int y)
 
 	Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_RIGHTDOWN | MOUSEEVENTF_RIGHTUP;
 
-	SendInput(1, &Input, sizeof(INPUT));
+	for (int i = 0; i < time; i++) {
+		SendInput(1, &Input, sizeof(INPUT));
+	}
 	
 
-	//Input.mi.dx = (LONG)cx;
-	//Input.mi.dy = (LONG)cy;
+	Input.mi.dx = (LONG)cx;
+	Input.mi.dy = (LONG)cy;
 
-	//Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+	Input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
 
-	//SendInput(1, &Input, sizeof(INPUT));
+	SendInput(1, &Input, sizeof(INPUT));
 }
-void WndProcHandler::InvokeElement_(CComPtr<IUIAutomationElement> &pElement) {
+void WndProcHandler::InvokeElement_(
+	CComPtr<IUIAutomationElement> &pElement,
+	HWND hWnd) {
     try {
         CONTROLTYPEID iControlType;
         HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
+		Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
         if(iControlType == UIA_TreeItemControlTypeId ||
 			iControlType == UIA_ButtonControlTypeId) {
 
@@ -490,8 +515,14 @@ void WndProcHandler::InvokeElement_(CComPtr<IUIAutomationElement> &pElement) {
             //} else {
                 RECT Rect;
                 pElement->get_CachedBoundingRectangle(&Rect);
-                SingleClick_((Rect.left + Rect.right) / 2, 
-                        (Rect.top + Rect.bottom) /2);
+				if (pCtx->GetClickType() == Context::LEFT_CLICK) {
+					LeftClick_((Rect.left + Rect.right) / 2,
+						(Rect.top + Rect.bottom) / 2, 2);
+				}
+				else if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
+					RightClick_((Rect.left + Rect.right) / 2,
+						(Rect.top + Rect.bottom) / 2, 2);
+				}
             //}
         } else {
             CComPtr<IUIAutomationInvokePattern> pInvoke;
@@ -505,8 +536,14 @@ void WndProcHandler::InvokeElement_(CComPtr<IUIAutomationElement> &pElement) {
 			else {
 				RECT Rect;
 				pElement->get_CachedBoundingRectangle(&Rect);
-				SingleClick_((Rect.left + Rect.right) / 2,
-					(Rect.top + Rect.bottom) / 2);
+				if (pCtx->GetClickType() == Context::LEFT_CLICK) {
+					LeftClick_((Rect.left + Rect.right) / 2,
+						(Rect.top + Rect.bottom) / 2, 2);
+				}
+				else if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
+					RightClick_((Rect.left + Rect.right) / 2,
+						(Rect.top + Rect.bottom) / 2, 2);
+				}
 			}
         }
     }

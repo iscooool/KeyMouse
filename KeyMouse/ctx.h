@@ -23,6 +23,7 @@ struct Profile {
 	Font font;
 	Font window_tag_font;
 	int opacity;
+	bool invert_click_type;
 };
 
 /**
@@ -67,6 +68,7 @@ public:
 	enum ClickType {
 		RIGHT_CLICK,
 		LEFT_CLICK,
+		SINGLE_RIGHT_CLICK,
 		SINGLE_LEFT_CLICK
 	};
     Context ();

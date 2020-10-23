@@ -156,7 +156,8 @@ Config::Config(const std::wstring& json_name) {
 			{"windowFontSize", 12},
 			{"windowFont", "Arial Rounded MT Bold"},
 			{"windowBkgdColor", "#CCBBAA"},
-			{"opacity", 100}
+			{"opacity", 100},
+			{"invertClickType", false}
 		}},
 		{"keybindings", {
 			{"toggleEnable", "alt+["},
@@ -327,6 +328,7 @@ Profile Config::ExtractProfile() {
 	profile.window_tag_font.font_size = profile_json["windowFontSize"].get<int>();
 	profile.window_tag_font.font_color = Str2RGB(profile_json["windowFontColor"].get<std::string>());
 	profile.opacity = profile_json["opacity"].get<int>();
+	profile.invert_click_type = profile_json["invertClickType"].get<bool>();
 
 	return profile;
 }
@@ -348,7 +350,12 @@ Context::Context() {
 	tag_map_ = PTagMap();
     enable_state_ = true;
 	on_fast_select_mode_ = false;
-	click_type_ = LEFT_CLICK;
+	if (profile_.invert_click_type) {
+		click_type_ = RIGHT_CLICK;
+	}
+	else {
+		click_type_ = LEFT_CLICK;
+	}
 	mode_ = NORMAL_MODE;
 }
 

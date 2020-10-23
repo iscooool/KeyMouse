@@ -27,7 +27,8 @@
         "font": "Arial Rounded MT Bold",
         "windowBkgdColor": "#CCBBAA",
         "windowFontSize": 11,
-        "opacity": 70
+        "opacity": 70,
+		"invertClickType": false
     },
     "keybindings":
     {
@@ -57,6 +58,7 @@ The options of profile is listed below:
 | windowFontSize| int| `12`| This option is for switch window tag.|
 | windowFont| string| `Arial Rounded MT Bold`| this option is for switch window tag. Indecate the font type of switch window tag.|
 | opacity| int| `100`| The opacity of tags. value is from 0-100.|
+| invertClickType| bool| `false`| When it's true, KeyMouse will use right click as main click.|
 
 The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`.
 

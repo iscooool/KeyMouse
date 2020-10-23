@@ -66,9 +66,9 @@ public:
 	static void EscSelectMode_(HWND hWnd);
 	static void SelectModeHandler_(HWND hWnd, WORD VirtualKey);
 	static void ScrollHandler_(HWND hWnd, WORD VirtualKey);
-	static void SingleClick_(int x, int y);
-	static void RightClick_(int x, int y);
-	static void InvokeElement_(CComPtr<IUIAutomationElement> &pElement);
+	static void LeftClick_(int x, int y, int time);
+	static void RightClick_(int x, int y, int time);
+	static void InvokeElement_(CComPtr<IUIAutomationElement> &pElement, HWND hWnd);
 	static void EditInputForward_(HWND hWnd, WORD VirtualKey);
 	static bool CompareBlackList_();
 	static INT_PTR CALLBACK About_(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
