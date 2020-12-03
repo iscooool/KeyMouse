@@ -161,8 +161,8 @@ Config::Config(const std::wstring& json_name) {
 		}},
 		{"keybindings", {
 			{"toggleEnable", "alt+["},
-			{"scrollUp", "k"},
-			{"scrollDown", "j"},
+			{"scrollUp", "alt+k"},
+			{"scrollDown", "alt+j"},
 			{"selectMode", "alt+;"},
 			{"escape", "esc"},
 			{"fastSelectMode", "alt+j"},

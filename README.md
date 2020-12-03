@@ -9,8 +9,8 @@
 - Fast Select mode: <kbd>Alt</kbd> + <kbd>J</kbd> to enter fast select mode. This mode may fail in some situations.
 - Esc Select mode: Press <kbd>Esc</kbd> to esc.
 - Disable: Press <kbd>Alt</kbd> + <kbd>[</kbd> to enable/disable the program.
-- Scroll down: Press <kbd>J</kbd>.
-- Scroll up: Press <kbd>K</kbd>.
+- Scroll down: Press <kbd>Alt</kbd> + <kbd>J</kbd>.
+- Scroll up: Press <kbd>Alt</kbd> + <kbd>K</kbd>.
 
 > if KeyMouse doesn't work, try to run as Administrator.
 
@@ -28,7 +28,7 @@
         "windowBkgdColor": "#CCBBAA",
         "windowFontSize": 11,
         "opacity": 70,
-	"invertClickType": false
+        "invertClickType": false
     },
     "keybindings":
     {
