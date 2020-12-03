@@ -300,110 +300,6 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 	return hWnd;
 }
 
-/**
-* @brief: TODO: need to be refactored.
-*         (this function is not finished yet.)a depth first search of element 
-*         tree to find desierd elements.(can't do better than FindAll.)
-*
-* @param: int restric_depth : the search depth.
-*		: IUIAutomationElement *element : the root node to walk.
-*       : IUIAutomationCacheRequest * cacheRequest
-*       : IUIAutomationTreeWalker *walker
-*       : std::vector<CComPtr<IUIAutomationElement>> *found
-*
-* @return: HRESULT
-*/
-HRESULT WalkDesiredElementBuildCache(
-	int restrict_depth,
-	IUIAutomationElement *element,
-	IUIAutomationCondition *condition,
-	IUIAutomationCacheRequest *cacheRequest,
-	IUIAutomationTreeWalker *walker,
-	std::vector<CComPtr<IUIAutomationElement>> *found)
- {
-
-
-	CONTROLTYPEID ControlType;
-	element->get_CurrentControlType(&ControlType);
-	// TODO: DocumentControlType is used for skipping chrome mainwindow. need to
-	// optimize.
-	if (element == nullptr || ControlType == UIA_DocumentControlTypeId)
-		return S_OK;
-
-	int nDepth = 0;
-	std::queue<IUIAutomationElement*> queue;
-	queue.push(element);
-	// the pointer to the next depth's first element on the element tree.
-	// For caculating the depth of current element.
-	BSTR szNextDepthFirstId;
-	element->get_CurrentAutomationId(&szNextDepthFirstId);
-	IUIAutomationElement *pCurrent;
-	do {
-		pCurrent = queue.front();
-		queue.pop();
-		IUIAutomationElement *pFirstChild;
-
-		// find the next depth's first element.
-		//BSTR szCurrentId;
-		//pCurrent->get_CurrentAutomationId(&szCurrentId);
-		//if (StrCmp(szCurrentId, szNextDepthFirstId) == 0) {
-		//	do {
-		//		walker->GetFirstChildElementBuildCache(
-		//			pCurrent, cacheRequest, &pFirstChild);
-		//		if (pFirstChild == nullptr && !queue.empty()) {	// when current has no child.
-		//			found->push_back(CComPtr<IUIAutomationElement>(pCurrent));
-		//			pCurrent = queue.front();
-		//			queue.pop();
-		//		}
-		//		else {
-		//			szNextDepthFirstId = szCurrentId;
-		//			nDepth++;
-		//			break;
-		//		}
-		//	} while (pFirstChild == nullptr);
-		//}
-		// push all children of pCurrent to the queue.
-		if (pCurrent != nullptr) {
-			HRESULT hr;
-
-			CComPtr<IUIAutomationElementArray> pChildrenElementArray;
-			hr = pCurrent->FindAllBuildCache(TreeScope_Children, 
-					condition,
-					cacheRequest,
-					&pChildrenElementArray);
-			throw_if_fail(hr);
-			
-			int nChildrenNum = 0;
-			if(pChildrenElementArray != nullptr) {
-				hr = pChildrenElementArray->get_Length(&nChildrenNum);
-				throw_if_fail(hr);
-			}
-			for (int i = 0; i < nChildrenNum; ++i) {
-				IUIAutomationElement *pChild;
-				pChildrenElementArray->GetElement(i, &pChild);
-				if (pChild != nullptr) {
-					// for debug.
-					BSTR szTemp;
-					pChild->get_CurrentName(&szTemp);
-					OutputDebugString(szTemp);
-
-					pChild->get_CurrentControlType(&ControlType);
-					if (!(ControlType == UIA_DocumentControlTypeId)) {
-						queue.push(pChild);
-					}
-				}
-
-			}
-			found->push_back(CComPtr<IUIAutomationElement>(pCurrent));
-		}
-
-		if (nDepth >= restrict_depth) {
-			break;
-		}
-	} while (!queue.empty());
-	return S_OK;
-}
-
 
 /**
 * @brief: TODO: need to be refactored.
@@ -453,6 +349,8 @@ KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
 			CloseHandle(hProc);
 		}
 		CComPtr<IUIAutomationElementArray> pElementArray;
+
+		//----------------------create element type condition ----------------------------
 		// Define the condition by pTotalCondition to find all desired items.
         std::vector<PROPERTYID> vPropertyId = {
             UIA_ListItemControlTypeId,
@@ -497,31 +395,45 @@ KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
                 );
         throw_if_fail(hr);
 
-        CComPtr<IUIAutomationCondition> pIsEnabledCondition;
-        VARIANT Val;
-        Val.vt = VT_BOOL;
-        Val.boolVal = VARIANT_TRUE;
-        hr = pAutomation->CreatePropertyCondition(UIA_IsEnabledPropertyId,
-            Val,
-            &pIsEnabledCondition);
-        throw_if_fail(hr);
-        CComPtr<IUIAutomationCondition> pIsOffscreenCondition;
-        Val.vt = VT_BOOL;
-        Val.boolVal = VARIANT_TRUE;
-        hr = pAutomation->CreatePropertyCondition(UIA_IsOffscreenPropertyId,
-            Val,
-            &pIsOffscreenCondition);
-        throw_if_fail(hr);
+		//----------------------create bool condition ----------------------------
+        std::vector<std::tuple<PROPERTYID, VARIANT_BOOL>> vPropertyTuple = {
+			{UIA_IsEnabledPropertyId, VARIANT_TRUE},
+			{UIA_IsOffscreenPropertyId, VARIANT_FALSE}
+         };
 
-        CComPtr<IUIAutomationCondition> pBoolCondition;
-        hr = pAutomation->CreateAndCondition(pIsEnabledCondition,
-                pIsOffscreenCondition,
-                &pBoolCondition
+        pConditionVector = SafeArrayCreateVector(
+                VT_UNKNOWN,
+                0,
+                vPropertyTuple.size()
+                );
+
+        i = 0;
+
+        for (std::tuple<PROPERTYID, VARIANT_BOOL> PropertyTuple : vPropertyTuple) {
+            IUIAutomationCondition *pCondition;
+            VARIANT Val;
+            Val.vt = VT_BOOL;
+			Val.lVal = std::get<1>(PropertyTuple);
+            hr = pAutomation->CreatePropertyCondition(std::get<0>(PropertyTuple),
+                Val,
+                &pCondition);
+            
+            hr = SafeArrayPutElement(pConditionVector, &i, pCondition); 
+            throw_if_fail(hr);
+
+            ++i;
+        }
+        CComPtr<IUIAutomationCondition> pTotalAndCondition;
+        
+        hr = pAutomation->CreateAndConditionFromArray(
+                pConditionVector,
+                &pTotalAndCondition
                 );
         throw_if_fail(hr);
+	//----------------------------------------------------------------------------	
 
         CComPtr<IUIAutomationCondition> pTotalCondition;
-        hr = pAutomation->CreateAndCondition(pIsEnabledCondition,
+        hr = pAutomation->CreateAndCondition(pTotalAndCondition,
                 pTotalOrCondition,
                 &pTotalCondition
                 );

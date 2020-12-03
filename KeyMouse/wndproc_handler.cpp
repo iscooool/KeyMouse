@@ -366,8 +366,6 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
     szTag.append(string(1, cInputChar));
     pCtx->SetCurrentTag(szTag);
     if(pTagMap->find(szTag) != pTagMap->end()) {
-        //MessageBox(nullptr, TEXT("test"), 
-                //TEXT("contains"),  MB_OK);
         CComPtr<IUIAutomationElement> pElement = (*pTagMap)[szTag];
 		if (pCtx->GetClickType() == Context::SINGLE_RIGHT_CLICK) {
 			RECT Rect;
@@ -501,8 +499,7 @@ void WndProcHandler::InvokeElement_(
         HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
 		Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
-        if(iControlType == UIA_TreeItemControlTypeId ||
-			iControlType == UIA_ButtonControlTypeId) {
+        if(iControlType == UIA_TreeItemControlTypeId) {
 
             // Sometimes the ClickablePoint is not actually clickable, but
             // bClickable equals 1. So comment the code.
