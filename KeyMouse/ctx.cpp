@@ -157,7 +157,8 @@ Config::Config(const std::wstring& json_name) {
 			{"windowFont", "Arial Rounded MT Bold"},
 			{"windowBkgdColor", "#CCBBAA"},
 			{"opacity", 100},
-			{"invertClickType", false}
+			{"invertClickType", false},
+			{"onlyForeWindow", true}
 		}},
 		{"keybindings", {
 			{"toggleEnable", "alt+["},
@@ -329,6 +330,7 @@ Profile Config::ExtractProfile() {
 	profile.window_tag_font.font_color = Str2RGB(profile_json["windowFontColor"].get<std::string>());
 	profile.opacity = profile_json["opacity"].get<int>();
 	profile.invert_click_type = profile_json["invertClickType"].get<bool>();
+	profile.only_forewindow = profile_json["onlyForeWindow"].get<bool>();
 
 	return profile;
 }

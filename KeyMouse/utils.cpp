@@ -17,6 +17,48 @@ HRESULT InitializeUIAutomation(IUIAutomation **ppAutomation) {
 		reinterpret_cast<void**>(ppAutomation));
 }
 
+struct ParamForEnum
+{
+	HMONITOR *pMonitor;
+	std::vector<HWND> *pTopWindowVec;
+};
+
+BOOL CALLBACK lpEnumTopWindowFunc(_In_ HWND hwnd, _In_ LPARAM lParam) {
+	ParamForEnum *pParam = reinterpret_cast<ParamForEnum *>(lParam);
+	HMONITOR *pTargetMonitor = pParam->pMonitor;
+	std::vector<HWND> *pTopWindowVec = pParam->pTopWindowVec;
+
+	RECT Rect;
+	GetWindowRect(hwnd, &Rect);
+	HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+	if (hMonitor != *pTargetMonitor)
+		return TRUE;
+	MONITORINFO MonitorInfo;
+	MonitorInfo.cbSize = sizeof(MONITORINFO);
+	GetMonitorInfo(hMonitor, &MonitorInfo);
+	RECT Intersect;
+	if (IntersectRect(&Intersect, &Rect, &MonitorInfo.rcWork)) {
+		if (MonitorInfo.dwFlags != MONITORINFOF_PRIMARY) {
+			WCHAR str[100];
+			LPWSTR pstr = str;
+			GetWindowText(hwnd, pstr, 100);
+			pTopWindowVec->push_back(hwnd);
+			return FALSE;
+			
+		}
+	}
+
+	return TRUE;
+};
+
+BOOL CALLBACK lpEnumMonitor(HMONITOR hMonitor, HDC hDC, LPRECT lpRect, LPARAM lParam) {
+	ParamForEnum Param;
+	Param.pMonitor = &hMonitor;
+	Param.pTopWindowVec = reinterpret_cast<std::vector<HWND>*>(lParam);
+	EnumWindows(lpEnumTopWindowFunc, reinterpret_cast<LPARAM>(&Param));
+	return TRUE;
+}
+
 std::thread t_tagmap;
 std::mutex mtx;
 void SetTagMapThread(HWND hWnd) {
@@ -33,12 +75,41 @@ void SetTagMapThread(HWND hWnd) {
 	KeyMouse::PElementVec pTempElementVec;
 	pCtx->ClearTagMap();
 	pCtx->SetTransWindow(hWnd);
-	HWND hForeWnd = pCtx->GetForeWindow();
-	// find the elements of froeground window.
-	pTempElementVec = EnumConditionedElement(*phMainWnd, hForeWnd);
-	if (pTempElementVec) {
-		pElementVec->insert(pElementVec->end(), 
-			pTempElementVec->begin(), pTempElementVec->end());
+
+	HWND hForeWnd = GetForegroundWindow();
+	std::vector<HWND> TopWindowVec;
+	
+	auto Profile = pCtx->GetProfile();
+	if (!Profile.only_forewindow) {
+		HMONITOR hMonitor = MonitorFromWindow(hForeWnd, MONITOR_DEFAULTTONEAREST);
+		MONITORINFO MonitorInfo;
+		MonitorInfo.cbSize = sizeof(MONITORINFO);
+		GetMonitorInfo(hMonitor, &MonitorInfo);
+
+		// due to the hardness of identifing real top visible winodow on primary monitor.
+		// when foreground window is not on primary monitor, we use hwnd previously stored
+		// in ctx as the top visible window on primary monitor.
+		if (MonitorInfo.dwFlags != MONITORINFOF_PRIMARY) {
+			hForeWnd = pCtx->GetForeWindow();
+		}
+		else {
+			pCtx->SetForeWindow(hForeWnd);
+		}
+
+		TopWindowVec.push_back(hForeWnd);
+		EnumDisplayMonitors(NULL, NULL, lpEnumMonitor, reinterpret_cast<LPARAM>(&TopWindowVec));
+	}
+	else {
+		pCtx->SetForeWindow(hForeWnd);
+		TopWindowVec.push_back(hForeWnd);
+	}
+
+	for (HWND hTopWindow : TopWindowVec) {
+		pTempElementVec = EnumConditionedElement(*phMainWnd, hTopWindow);
+		if (pTempElementVec) {
+			pElementVec->insert(pElementVec->end(), 
+				pTempElementVec->begin(), pTempElementVec->end());
+		}
 	}
 	// find the elements of taskbar.
 	CComPtr<IUIAutomationElement> pDesktop;
@@ -98,6 +169,7 @@ void SetTagMapThread(HWND hWnd) {
 		pWindowElementArray->GetElement(i, &pTempElement);
 		pWindowVec->push_back(pTempElement);
 	}
+
 	//-------------------------------------------------------------------
 	KeyMouse::PTagMap TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
 	KeyMouse::PTagMap WindowMap(new std::map<string, CComPtr<IUIAutomationElement>>);
@@ -160,32 +232,35 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (mtx.try_lock() && pCtx) {
 			auto profile = pCtx->GetProfile();
 			const KeyMouse::PTagMap& pWindowMap = pCtx->GetWindowMap();
-			for (auto& item : *pWindowMap) {
-				RECT Rect;
-				item.second->get_CachedBoundingRectangle(&Rect);
-			
-				// print the tag on the screen.
-				const TCHAR *psText = item.first.c_str();
-				POINT point;
-				point.x = (Rect.left + Rect.right) / 2;
-				point.y = Rect.top;
-				KeyMouse::Font font = profile.window_tag_font;
-				DrawTag(*phMainWnd, hWnd, hDC, point, psText, font);
+			if (pWindowMap != nullptr) {
+				for (auto& item : *pWindowMap) {
+					RECT Rect;
+					item.second->get_CachedBoundingRectangle(&Rect);
 				
+					// print the hint on the screen.
+					const TCHAR *psText = item.first.c_str();
+					POINT point;
+					point.x = (Rect.left + Rect.right) / 2;
+					point.y = Rect.top;
+					KeyMouse::Font font = profile.window_tag_font;
+					DrawTag(*phMainWnd, hWnd, hDC, point, psText, font);
+					
+				}
 			}
 			const KeyMouse::PTagMap& pTagMap = pCtx->GetTagMap();
-			for (auto& item : *pTagMap) {
-				RECT Rect;
-				item.second->get_CachedBoundingRectangle(&Rect);
-			
-				// print the tag on the screen.
-				const TCHAR *psText = item.first.c_str();
-				POINT point;
-				point.x = Rect.left;
-				point.y = Rect.top;
-
-				DrawTag(*phMainWnd, hWnd, hDC, point, psText, profile.font);
+			if (pTagMap != nullptr) {
+				for (auto& item : *pTagMap) {
+					RECT Rect;
+					item.second->get_CachedBoundingRectangle(&Rect);
 				
+					// print the hint on the screen.
+					const TCHAR *psText = item.first.c_str();
+					POINT point;
+					point.x = Rect.left;
+					point.y = Rect.top;
+					DrawTag(*phMainWnd, hWnd, hDC, point, psText, profile.font);
+					
+				}
 			}
 			mtx.unlock();
 		}
@@ -233,7 +308,6 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 */
 HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 {
-	HWND hMaskWindow = GetForegroundWindow();
 	HWND hWnd;
 	HINSTANCE hInst = hInstance;
 
@@ -260,14 +334,11 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
 	RegisterClassExW(&wcex);
-    // Get the resolution of th screen.
-	DEVMODE dm;
-	dm.dmSize = sizeof(DEVMODE);
-	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm);
-    int X = 0;
-    int Y = 0;
-	int Width = dm.dmPelsWidth;
-	int Height = dm.dmPelsHeight;
+    // Get the resolution of the virtual screen.
+	int X = GetSystemMetrics(SM_XVIRTUALSCREEN);
+	int Y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+	int Width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+	int Height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 	hWnd = CreateWindowEx(Flags1, szWindowClass, szTitle, Flags2, 
             X, Y, 
             Width, Height, 
@@ -591,29 +662,37 @@ void DrawTag(HWND hMainWnd, HWND hTransWnd, HDC hdc, POINT point, const TCHAR* p
 	HBRUSH hbrushOld = static_cast<HBRUSH>(SelectObject(hdc, GetStockObject(DC_BRUSH)));
 	// background color.
 	SetDCBrushColor(hdc, font.background_color);
-    
-	int nHight = -MulDiv(font.font_size, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+	
+	int nHight = MulDiv(font.font_size, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+	int PrimaryHeight = GetSystemMetrics(SM_CYSCREEN);
+	// use different height on different monitors.
+
 	HFONT hFont = CreateFont(nHight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 		ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, font.font_name.c_str());
 
 	HFONT hfontOld = static_cast<HFONT>(SelectObject(hdc, hFont));
-	SIZE text_size;
+	SIZE TextSize;
 
-	GetTextExtentPoint(hdc, psText, _tcslen(psText), &text_size);
+	GetTextExtentPoint(hdc, psText, _tcslen(psText), &TextSize);
 	
-	double padding_ratio = 1.4;
-	RECT rect;
-	rect.left = point.x;
-	rect.top = point.y;
-	rect.right = static_cast<LONG>(point.x + text_size.cx * padding_ratio);
-	rect.bottom = static_cast<LONG>(point.y + text_size.cy * padding_ratio);
-	RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, text_size.cx / 4, text_size.cy / 4);
+	int WidthMax = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+	int HeightMax = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+	point.x = point.x > WidthMax ? WidthMax : point.x;
+	point.y = point.y > HeightMax ? HeightMax : point.y;
+	LogicalToPhysicalPointForPerMonitorDPI(hTransWnd, &point);
+	double PaddingRatio = 1.4;
+	RECT Rect;
+	Rect.left = point.x;
+	Rect.top = point.y;
+	Rect.right = static_cast<LONG>(point.x + TextSize.cx * PaddingRatio);
+	Rect.bottom = static_cast<LONG>(point.y + TextSize.cy * PaddingRatio);
+	RoundRect(hdc, Rect.left, Rect.top, Rect.right, Rect.bottom, TextSize.cx / 4, TextSize.cy / 4);
 	SetBkMode(hdc, TRANSPARENT);
 	SetBkColor(hdc, RGB(0, 0, 0));   // black
 	SetTextColor(hdc, font.font_color);
 	
-	DrawText(hdc, psText, -1, &rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+	DrawText(hdc, psText, -1, &Rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 
 	SelectObject(hdc, hpenOld);
 	SelectObject(hdc, hbrushOld);
@@ -623,3 +702,31 @@ void DrawTag(HWND hMainWnd, HWND hTransWnd, HDC hdc, POINT point, const TCHAR* p
 
 }
 
+/**
+* @brief: return the right physical rect for multiple monitors.
+*
+* @param: HWND hWnd: the transparent window.
+		: RECT Rect: the logical source rect.
+*
+* @return: Rect
+*/
+RECT RectForPerMonitorDPI(HWND hWnd, RECT Rect) {
+	POINT LeftTop;
+	LeftTop.x = Rect.left;
+	LeftTop.y = Rect.top;
+	LogicalToPhysicalPointForPerMonitorDPI(hWnd, &LeftTop);
+	Rect.left = LeftTop.x;
+	Rect.top = LeftTop.y;
+
+	int WidthMax = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+	int HeightMax = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+	POINT RightBottom;
+	// the RightBottom point might be over the max value.
+	RightBottom.x = Rect.right > WidthMax ? WidthMax : Rect.right;
+	RightBottom.y = Rect.bottom > HeightMax ? HeightMax : Rect.bottom;
+	LogicalToPhysicalPointForPerMonitorDPI(hWnd, &RightBottom);
+	Rect.right = RightBottom.x;
+	Rect.bottom = RightBottom.y;
+
+	return Rect;
+}

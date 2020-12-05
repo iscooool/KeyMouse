@@ -24,6 +24,7 @@ struct Profile {
 	Font window_tag_font;
 	int opacity;
 	bool invert_click_type;
+	bool only_forewindow;
 };
 
 /**

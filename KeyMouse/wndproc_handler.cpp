@@ -139,7 +139,7 @@ LRESULT WndProcHandler::fnWndProc_Tray_(const WndEventArgs& Wea) {
 				SetMenuItemInfo(hSubMenu, ID_TRAYMENU_DISABLE, false,
 						&MenuItemInfo);
 
-				SetForegroundWindow(Wea.hWnd);
+				// SetForegroundWindow(Wea.hWnd);
 				int cmd = TrackPopupMenu(hSubMenu, TPM_RETURNCMD,
 										 pt.x, pt.y, NULL, Wea.hWnd, NULL);
 				if(cmd == ID_TRAYMENU_EXIT)
@@ -217,8 +217,7 @@ LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
 	CompareBlackList_();
 
 	pCtx->SetMode(Context::SELECT_MODE);
-	HWND hForeWindow = GetForegroundWindow();
-	pCtx->SetForeWindow(hForeWindow);
+
 	CreateTransparentWindow(Wea.hInst, Wea.hWnd);
 
 	RegCustomHotKey(Wea.hWnd, "escape");
@@ -365,19 +364,22 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
 
     szTag.append(string(1, cInputChar));
     pCtx->SetCurrentTag(szTag);
+	HWND TransWindow = pCtx->GetTransWindow();
+
     if(pTagMap->find(szTag) != pTagMap->end()) {
         CComPtr<IUIAutomationElement> pElement = (*pTagMap)[szTag];
+
+		RECT Rect;
+		pElement->get_CachedBoundingRectangle(&Rect);
+
+		Rect = RectForPerMonitorDPI(TransWindow, Rect);
 		if (pCtx->GetClickType() == Context::SINGLE_RIGHT_CLICK) {
-			RECT Rect;
-			pElement->get_CachedBoundingRectangle(&Rect);
 			RightClick_((Rect.left + Rect.right) / 2, 
 					(Rect.top + Rect.bottom) /2, 1);
 		}
 		else if (pCtx->GetClickType() == Context::SINGLE_LEFT_CLICK) {
-			RECT Rect;
-			pElement->get_CachedBoundingRectangle(&Rect);
-			LeftClick_((Rect.left + Rect.right) / 2, 
-					(Rect.top + Rect.bottom) /2, 1);
+			LeftClick_((Rect.left + Rect.right) / 2,
+				(Rect.top + Rect.bottom) / 2, 1);
 
 		}
 		else {
@@ -499,28 +501,25 @@ void WndProcHandler::InvokeElement_(
         HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
 		Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
+		HWND TransWindow = pCtx->GetTransWindow();
+
         if(iControlType == UIA_TreeItemControlTypeId) {
 
             // Sometimes the ClickablePoint is not actually clickable, but
-            // bClickable equals 1. So comment the code.
+            // bClickable equals 1. 
             
-            //POINT point;
-            //BOOL bClickable;
-            //pElement->GetClickablePoint(&point, &bClickable);
-            //if(bClickable) {
-                //SingleClick(point.x, point.y);
-            //} else {
-                RECT Rect;
-                pElement->get_CachedBoundingRectangle(&Rect);
-				if (pCtx->GetClickType() == Context::LEFT_CLICK) {
-					LeftClick_((Rect.left + Rect.right) / 2,
-						(Rect.top + Rect.bottom) / 2, 2);
-				}
-				else if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
-					RightClick_((Rect.left + Rect.right) / 2,
-						(Rect.top + Rect.bottom) / 2, 2);
-				}
-            //}
+			RECT Rect;
+			pElement->get_CachedBoundingRectangle(&Rect);
+			
+			Rect = RectForPerMonitorDPI(TransWindow, Rect);
+			if (pCtx->GetClickType() == Context::LEFT_CLICK) {
+				LeftClick_((Rect.left + Rect.right) / 2,
+					(Rect.top + Rect.bottom) / 2, 2);
+			}
+			else if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
+				RightClick_((Rect.left + Rect.right) / 2,
+					(Rect.top + Rect.bottom) / 2, 2);
+			}
         } else {
             CComPtr<IUIAutomationInvokePattern> pInvoke;
             hr = pElement->GetCachedPatternAs(
@@ -533,6 +532,7 @@ void WndProcHandler::InvokeElement_(
 			else {
 				RECT Rect;
 				pElement->get_CachedBoundingRectangle(&Rect);
+				Rect = RectForPerMonitorDPI(TransWindow, Rect);
 				if (pCtx->GetClickType() == Context::LEFT_CLICK) {
 					LeftClick_((Rect.left + Rect.right) / 2,
 						(Rect.top + Rect.bottom) / 2, 2);
