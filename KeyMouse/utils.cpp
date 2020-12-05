@@ -98,19 +98,56 @@ void SetTagMapThread(HWND hWnd) {
 
 		TopWindowVec.push_back(hForeWnd);
 		EnumDisplayMonitors(NULL, NULL, lpEnumMonitor, reinterpret_cast<LPARAM>(&TopWindowVec));
+
+#ifdef _DEBUG
+        DWORD start_time = GetTickCount();
+#endif
+
+		size_t nThread = TopWindowVec.size();
+		std::vector<std::future<KeyMouse::PElementVec>> Futures(nThread);
+		std::vector<KeyMouse::PElementVec> Results(nThread);
+		// Task assignment for multi-threads.
+		for(size_t i = 0; i < nThread; ++i) {
+			HWND hTopWindow = TopWindowVec[i];
+			Futures[i] = std::async(
+				EnumConditionedElement,
+				*phMainWnd,
+				hTopWindow
+			);
+		}
+		for(size_t i = 0; i < nThread; ++i) {
+			Results[i] = Futures[i].get();
+			if (Results[i]) {
+			pElementVec->insert(pElementVec->end(), 
+				Results[i]->begin(), Results[i]->end());
+			}
+		}
+#ifdef _DEBUG
+        DWORD end_time = GetTickCount();
+        DWORD total_time = end_time - start_time;
+        cout<<total_time<<std::endl;
+#endif
 	}
 	else {
 		pCtx->SetForeWindow(hForeWnd);
 		TopWindowVec.push_back(hForeWnd);
+#ifdef _DEBUG
+        DWORD start_time = GetTickCount();
+#endif
+		for (HWND hTopWindow : TopWindowVec) {
+			pTempElementVec = EnumConditionedElement(*phMainWnd, hTopWindow);
+			if (pTempElementVec) {
+				pElementVec->insert(pElementVec->end(), 
+					pTempElementVec->begin(), pTempElementVec->end());
+			}
+		}
+#ifdef _DEBUG
+        DWORD end_time = GetTickCount();
+        DWORD total_time = end_time - start_time;
+        cout<<total_time<<std::endl;
+#endif
 	}
 
-	for (HWND hTopWindow : TopWindowVec) {
-		pTempElementVec = EnumConditionedElement(*phMainWnd, hTopWindow);
-		if (pTempElementVec) {
-			pElementVec->insert(pElementVec->end(), 
-				pTempElementVec->begin(), pTempElementVec->end());
-		}
-	}
 	// find the elements of taskbar.
 	CComPtr<IUIAutomationElement> pDesktop;
 	HRESULT hr = pAutomation->GetRootElement(&pDesktop);
@@ -384,7 +421,6 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 */
 KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
 	try {
-        DWORD start_time = GetTickCount();
 
         // Get current context.
         KeyMouse::Context *pCtx = 
@@ -572,9 +608,6 @@ KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
         throw_if_fail(hr);
 
 		KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
-        DWORD end_time = GetTickCount();
-        DWORD total_time = end_time - start_time;
-        cout<<total_time<<std::endl;
 
 		
 		// Traverse the items of ElementArray and paint all hints on the screen.
