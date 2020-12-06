@@ -29,7 +29,8 @@
         "windowFontSize": 11,
         "opacity": 70,
         "invertClickType": false,
-        "onlyForeWindow": true
+        "onlyForeWindow": true,
+        "enableWindowSwitching": true
     },
     "keybindings":
     {
