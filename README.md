@@ -61,6 +61,7 @@ The options of profile is listed below:
 | opacity| int| `100`| The opacity of tags. value is from 0-100.|
 | invertClickType| bool| `false`| When it's true, KeyMouse will use right click as main click.|
 | onlyForeWindow| bool| `true`| When using multiple monitors, only enumerate hints on foreground window. If setting to false, It will try to enumerate windows on other monitors(might be slow.)|
+| enableWindowSwitching| bool| `true`| Window switching feature may cause a high delay on some Windows versions.|
 
 The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`.
 

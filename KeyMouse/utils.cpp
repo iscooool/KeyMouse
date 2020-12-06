@@ -176,35 +176,38 @@ void SetTagMapThread(HWND hWnd) {
 		}
 	}
 	// find the elements of other windows.
-	CComPtr<IUIAutomationCondition> pIsOffScreenCondition;
-	Val.vt = VT_BOOL;
-	Val.boolVal = VARIANT_FALSE;
-	hr = pAutomation->CreatePropertyCondition(UIA_IsOffscreenPropertyId,
-		Val,
-		&pIsOffScreenCondition);
-	throw_if_fail(hr);
-	CComPtr<IUIAutomationCacheRequest> pCacheRequest;
-	hr = pAutomation->CreateCacheRequest(&pCacheRequest);
-	throw_if_fail(hr);
-	hr = pCacheRequest->AddProperty(UIA_BoundingRectanglePropertyId);
-	throw_if_fail(hr);
-	CComPtr<IUIAutomationElementArray> pWindowElementArray;
-	hr = pDesktop->FindAllBuildCache(TreeScope_Children, 
-			pIsOffScreenCondition,
-			pCacheRequest,
-			&pWindowElementArray);
-	throw_if_fail(hr);
-	int nWindowNum = 0;
-	if(pWindowElementArray != nullptr) {
-		hr = pWindowElementArray->get_Length(&nWindowNum);
-		throw_if_fail(hr);
-	}
-
 	KeyMouse::PElementVec pWindowVec(new std::vector<CComPtr<IUIAutomationElement>>);
-	for (int i = 0; i < nWindowNum; ++i) {
-		IUIAutomationElement *pTempElement;
-		pWindowElementArray->GetElement(i, &pTempElement);
-		pWindowVec->push_back(pTempElement);
+	if (Profile.enable_window_switching) {
+		CComPtr<IUIAutomationCondition> pIsOffScreenCondition;
+		Val.vt = VT_BOOL;
+		Val.boolVal = VARIANT_FALSE;
+		hr = pAutomation->CreatePropertyCondition(UIA_IsOffscreenPropertyId,
+			Val,
+			&pIsOffScreenCondition);
+		throw_if_fail(hr);
+		CComPtr<IUIAutomationCacheRequest> pCacheRequest;
+		hr = pAutomation->CreateCacheRequest(&pCacheRequest);
+		throw_if_fail(hr);
+		hr = pCacheRequest->AddProperty(UIA_BoundingRectanglePropertyId);
+		throw_if_fail(hr);
+		CComPtr<IUIAutomationElementArray> pWindowElementArray;
+		hr = pDesktop->FindAllBuildCache(TreeScope_Children, 
+				pIsOffScreenCondition,
+				pCacheRequest,
+				&pWindowElementArray);
+		throw_if_fail(hr);
+		int nWindowNum = 0;
+		if(pWindowElementArray != nullptr) {
+			hr = pWindowElementArray->get_Length(&nWindowNum);
+			throw_if_fail(hr);
+		}
+
+		for (int i = 0; i < nWindowNum; ++i) {
+			IUIAutomationElement *pTempElement;
+			pWindowElementArray->GetElement(i, &pTempElement);
+			pWindowVec->push_back(pTempElement);
+		}
+
 	}
 
 	//-------------------------------------------------------------------

@@ -158,7 +158,8 @@ Config::Config(const std::wstring& json_name) {
 			{"windowBkgdColor", "#CCBBAA"},
 			{"opacity", 100},
 			{"invertClickType", false},
-			{"onlyForeWindow", true}
+			{"onlyForeWindow", true},
+			{"enableWindowSwitching", true}
 		}},
 		{"keybindings", {
 			{"toggleEnable", "alt+["},
@@ -331,6 +332,7 @@ Profile Config::ExtractProfile() {
 	profile.opacity = profile_json["opacity"].get<int>();
 	profile.invert_click_type = profile_json["invertClickType"].get<bool>();
 	profile.only_forewindow = profile_json["onlyForeWindow"].get<bool>();
+	profile.enable_window_switching = profile_json["enableWindowSwitching"].get<bool>();
 
 	return profile;
 }

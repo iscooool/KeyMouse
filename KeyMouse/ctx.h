@@ -25,6 +25,7 @@ struct Profile {
 	int opacity;
 	bool invert_click_type;
 	bool only_forewindow;
+	bool enable_window_switching;
 };
 
 /**
