@@ -2,6 +2,7 @@
 #include "stdafx.h"
 #include "ctx.h"
 #include "hotkey_handler.h"
+#include "utils.h"
 
 namespace KeyMouse {
 const int MAX_PATH_LEN = 200;
@@ -287,6 +288,7 @@ LPARAM Config::ExtractSingleKeyBinding_(std::string key, std::string binding) {
 	return MAKELPARAM(lo, hi);
 
 }
+
 KeybindingMap Config::ExtractKeyBinding() {
 	json keybinding_json = config_json_["keybindings"];
 	KeybindingMap keybinding_map;
@@ -348,10 +350,17 @@ Context::Context() {
 	profile_ = config_.ExtractProfile();
 	ApplyProfile_();
 
+	// initalize uiautomation.
+	CoCreateInstance(CLSID_CUIAutomation, nullptr,
+		CLSCTX_INPROC_SERVER, IID_IUIAutomation,
+		reinterpret_cast<void**>(&automation_));
+
 	wndProc_handler_ = WndProcHandler();
+	event_handlers_.reset(new std::map<HWND, std::vector<CComPtr<IUnknown>>>);
 	wndProc_handler_.InitialHKBinding(keybinding_map_);
     current_tag_ = string(TEXT(""));
 	tag_map_ = PTagMap();
+	cache_window_.reset(new std::map<HWND, std::map<std::string, PElementVec>>);
     enable_state_ = true;
 	on_fast_select_mode_ = false;
 	if (profile_.invert_click_type) {
@@ -361,6 +370,10 @@ Context::Context() {
 		click_type_ = LEFT_CLICK;
 	}
 	mode_ = NORMAL_MODE;
+	is_cache_expired_ = false;
+	cache_expired_struct_changed_ = false;
+	last_input_tick_ = 0;
+	last_cache_tick_ = 0;
 }
 
 Context::~Context() {
@@ -409,6 +422,10 @@ bool Context::DeleteRegistryRUN_()
 	RegCloseKey(hKey);
 	return true;
 }
+
+void Context::InitTimer(HWND hwnd) {
+	timer_.reset(new TimedExecution(CacheThread, std::chrono::milliseconds(1), hwnd));
+}
 const  WndProcHandler& Context::GetWndProcHandler() const {
     return wndProc_handler_;
 }
@@ -421,10 +438,22 @@ const Profile& Context::GetProfile() const {
 	return profile_;
 }
 
-void Context::SetStructEventHandler(EventHandler* event_handler) {
+IUIAutomation* Context::GetAutomation() const {
+	return automation_;
+}
+
+void Context::SetEventHandlers(PEventHandlers& event_handlers) {
+	event_handlers_ = std::move(event_handlers);
+}
+
+PEventHandlers Context::GetEventHandlers() const {
+	return event_handlers_;
+}
+
+void Context::SetStructEventHandler(CComPtr<EventHandler> &event_handler) {
     pStruct_event_handler_ = event_handler;
 }
-const EventHandler* Context::GetStructEventHandler() const {
+CComPtr<EventHandler> Context::GetStructEventHandler() const {
     return pStruct_event_handler_;
 }
 
@@ -457,14 +486,17 @@ void Context::SetMaxTagLen(const size_t len) {
 const size_t &Context::GetMaxTagLen() const {
     return max_tag_len_;
 }
+
 void Context::SetTagMap(PTagMap& map) {
     tag_map_ = std::move(map);
 }
+
 void Context::ClearTagMap() {
 	if (tag_map_ != nullptr) {
 		tag_map_->clear();
 	}
 }
+
 void Context::MergeTagMap(PTagMap& src_map) {
 	if (tag_map_ == nullptr) {
 		tag_map_ = std::move(src_map);
@@ -481,9 +513,11 @@ const PTagMap& Context::GetTagMap() const {
 void Context::SetWindowMap(PTagMap& map) {
 	window_map_ = std::move(map);
 }
+
 const PTagMap& Context::GetWindowMap() const {
 	return window_map_;
 }
+
 void Context::SetEnableState(const bool flag) {
     enable_state_ = flag;
 }
@@ -491,15 +525,19 @@ void Context::SetEnableState(const bool flag) {
 const bool &Context::GetEnableState() const {
     return enable_state_;
 }
+
 void Context::SetFastSelectState(const bool flag) {
 	on_fast_select_mode_ = flag;
 }
+
 const bool& Context::GetFastSelectState() const {
 	return on_fast_select_mode_;
 }
+
 void Context::SetClickType(const ClickType type) {
 	click_type_ = type;
 }
+
 Context::ClickType Context::GetClickType() const {
 	return click_type_;
 }
@@ -524,5 +562,45 @@ void Context::SetMode(const Mode mode) {
 
 const Context::Mode &Context::GetMode() const {
     return mode_;
+}
+
+void Context::SetCacheExpiredState(const bool stat) {
+	is_cache_expired_ = stat;
+}
+
+const bool &Context::GetCacheExpiredState() const {
+	return is_cache_expired_;
+}
+
+void Context::SetCacheExpiredStructChanged(const bool stat) {
+	cache_expired_struct_changed_ = stat;
+}
+
+const bool &Context::GetCacheExpiredStructChanged() const {
+	return cache_expired_struct_changed_;
+}
+
+void Context::SetLastInputTick(const DWORD interval) {
+	last_input_tick_ = interval;
+}
+
+const DWORD &Context::GetLastInputTick() const {
+	return last_input_tick_;
+}
+
+void Context::SetLastcacheTick(const DWORD time) {
+	last_cache_tick_ = time;
+}
+
+const DWORD &Context::GetLastCacheTick() const {
+	return last_cache_tick_;
+}
+
+void Context::SetCacheWindow(PCacheWindow& cache_window) {
+	cache_window_ = std::move(cache_window);
+}
+
+const PCacheWindow& Context::GetCacheWindow() const {
+	return cache_window_;
 }
 }

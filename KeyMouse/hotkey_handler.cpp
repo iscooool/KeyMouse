@@ -5,7 +5,7 @@
 #include "utils.h"
 namespace KeyMouse {
 BOOL RegCustomHotKey(HWND hWnd, std::string key) {
-	Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
+	Context *pCtx = GetContext(hWnd);
 	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
 	int id = keybinding_map[key].id;
 	UINT fsModifiers = LOWORD(keybinding_map[key].lParam);
@@ -14,7 +14,7 @@ BOOL RegCustomHotKey(HWND hWnd, std::string key) {
 
 }
 BOOL UnregCustomHotKey(HWND hWnd, std::string key) {
-	Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
+	Context *pCtx = GetContext(hWnd);
 	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
 	int id = keybinding_map[key].id;
 	return UnregisterHotKey(hWnd, id);

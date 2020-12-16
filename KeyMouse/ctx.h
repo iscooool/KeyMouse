@@ -9,8 +9,45 @@
 using json = nlohmann::json;
 
 namespace KeyMouse {
-using PTagMap = std::unique_ptr<std::map<string, CComPtr<IUIAutomationElement>>>;
-using PElementVec = std::unique_ptr<std::vector<CComPtr<IUIAutomationElement>>>;
+// a snippet from https://stackoverflow.com/questions/25104305/how-to-make-a-function-execute-at-the-desired-periods-using-c-11
+struct TimedExecution {
+    typedef void (*func_type)(HWND);
+	TimedExecution() {};
+    TimedExecution (func_type func, const std::chrono::milliseconds period, HWND hwnd) 
+        : func_(func)
+        , period_(period)
+        , thread_(std::bind(&TimedExecution::threadFunc,this))
+		, hwnd_(hwnd)
+		, kill_(false)
+    {
+	}
+	~TimedExecution() {
+		kill_ = true;
+		thread_.join();
+	};
+private:        
+    void threadFunc() {
+		HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY);
+        while(true) {
+            std::this_thread::sleep_for(period_);
+            func_(hwnd_);
+			if (kill_) {
+				CoUninitialize();
+				break;
+			}
+        }
+    }
+    func_type func_;
+    std::chrono::milliseconds period_;
+    std::thread thread_;
+	HWND hwnd_;
+	bool kill_;
+};
+
+using PTagMap = std::shared_ptr<std::map<string, CComPtr<IUIAutomationElement>>>;
+using PElementVec = std::shared_ptr<std::vector<CComPtr<IUIAutomationElement>>>;
+using PCacheWindow = std::unique_ptr<std::map<HWND, std::map<std::string, PElementVec>>>;
+using PEventHandlers = std::shared_ptr<std::map<HWND, std::vector<CComPtr<IUnknown>>>>;
 
 struct Font {
 	std::wstring font_name;
@@ -79,12 +116,16 @@ public:
 	bool WriteRegistryRUN_();
 	bool DeleteRegistryRUN_();
 	void ApplyProfile_();
+	void InitTimer(HWND hwnd);
     const WndProcHandler& GetWndProcHandler () const;
     const KeybindingMap& GetKeybindingMap () const;
 	const Profile& GetProfile() const;
 
-	void SetStructEventHandler(EventHandler* event_handler);
-	const EventHandler* GetStructEventHandler() const;
+	IUIAutomation* GetAutomation() const;
+    void SetEventHandlers(PEventHandlers& event_handlers);
+    PEventHandlers GetEventHandlers() const;
+	void SetStructEventHandler(CComPtr<EventHandler>& event_handler);
+	CComPtr<EventHandler> GetStructEventHandler() const;
     void SetElement(CComPtr<IUIAutomationElement>& pElement);
     const CComPtr<IUIAutomationElement>& GetElement() const;
     void SetPrevProcessName(const std::string &tag);
@@ -112,6 +153,16 @@ public:
 	const HWND &GetForeWindow() const;
     void SetMode(const Mode mode);
     const Mode &GetMode() const;
+    void SetCacheExpiredState(const bool stat);
+    const bool &GetCacheExpiredState() const;
+    void SetCacheExpiredStructChanged(const bool stat);
+    const bool &GetCacheExpiredStructChanged() const;
+    void SetLastInputTick(const DWORD interval);
+    const DWORD &GetLastInputTick() const;
+    void SetLastcacheTick(const DWORD time);
+    const DWORD &GetLastCacheTick() const;
+    void SetCacheWindow(PCacheWindow& cache_window);
+    const PCacheWindow& GetCacheWindow() const;
 
 private:
 	std::wstring app_directory_;
@@ -121,9 +172,12 @@ private:
     // the (command: IdlParam)map of hotkey binding.
 	KeybindingMap keybinding_map_;
 	Profile profile_;
+
+	IUIAutomation* automation_;
     // window process handler which will handle all message from windows.
 	WndProcHandler wndProc_handler_;
-	EventHandler* pStruct_event_handler_;
+	PEventHandlers event_handlers_;
+	CComPtr<EventHandler> pStruct_event_handler_;
 	CComPtr<IUIAutomationElement> pElement_;
 	std::string prev_process_name_;
 	
@@ -132,6 +186,9 @@ private:
     // (hints: UIAutomationElement) map.
     PTagMap tag_map_;
     PTagMap window_map_;
+
+	PCacheWindow cache_window_;
+
     
     // current status.
     bool enable_state_;
@@ -142,5 +199,14 @@ private:
 	HWND fore_window_;
     Mode mode_;
 
+	// cache will expires when keyboard strokes are detected
+	// and target window's struct and property changing.
+	bool is_cache_expired_;		
+	bool cache_expired_struct_changed_;
+
+	DWORD last_input_tick_;
+	DWORD last_cache_tick_;
+	
+	std::unique_ptr<TimedExecution> timer_;
 };
 }

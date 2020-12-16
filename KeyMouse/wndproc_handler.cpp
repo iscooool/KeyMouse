@@ -97,7 +97,7 @@ LRESULT WndProcHandler::fnWndProc_Command_(const WndEventArgs& Wea) {
 	return 0;
 }
 LRESULT WndProcHandler::fnWndProc_Tray_(const WndEventArgs& Wea) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 
 	int lmId = LOWORD(Wea.lParam);
 	switch(lmId)
@@ -165,7 +165,7 @@ LRESULT WndProcHandler::fnWndProc_Tray_(const WndEventArgs& Wea) {
 	return 0;
 }
 LRESULT WndProcHandler::fnWndProc_Hotkey_(const WndEventArgs& Wea) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 
 	auto Mode = pCtx->GetMode();
 	if (Mode == Context::NORMAL_MODE) {
@@ -204,7 +204,7 @@ LRESULT WndProcHandler::fnWndProc_Destroy_(const WndEventArgs& Wea) {
 	return 0;
 }
 LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 
 	if (!pCtx->GetEnableState())
 		return 0;
@@ -225,7 +225,7 @@ LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
 	return 0;
 }
 LRESULT WndProcHandler::fnHKProc_FastSelectMode_(const WndEventArgs& Wea) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
 	pCtx->SetFastSelectState(true);
 	PostMessage(Wea.hWnd, WM_HOTKEY, 0, keybinding_map["selectMode"].lParam);
@@ -233,7 +233,7 @@ LRESULT WndProcHandler::fnHKProc_FastSelectMode_(const WndEventArgs& Wea) {
 }
 
 LRESULT WndProcHandler::fnHKProc_RightClickPrefix_(const WndEventArgs& Wea) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 	auto profile = pCtx->GetProfile();
 	if (profile.invert_click_type) {
 		pCtx->SetClickType(Context::SINGLE_LEFT_CLICK);
@@ -246,23 +246,19 @@ LRESULT WndProcHandler::fnHKProc_RightClickPrefix_(const WndEventArgs& Wea) {
 		HWND hForeWnd = pCtx->GetForeWindow();
 		CComPtr<IUIAutomationElement> pElement;
 		pElement = pCtx->GetElement();
-		//HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
-		const EventHandler* pEHTemp = pCtx->GetStructEventHandler();
+		CComPtr<IUnknown> pEHTemp = pCtx->GetStructEventHandler();
 		if (pElement != nullptr && pEHTemp != nullptr) {
-			//HRESULT hr = pAutomation->RemoveStructureChangedEventHandler(pElement,
-			//		(IUIAutomationStructureChangedEventHandler*)pEHTemp);
 
+			IUIAutomation* pAutomation = pCtx->GetAutomation();
 			HRESULT hr = pAutomation->RemoveAllEventHandlers();
+			//HRESULT hr = pAutomation->RemoveStructureChangedEventHandler(pElement, (IUIAutomationStructureChangedEventHandler*)pEHTemp.p);
 			pCtx->SetFastSelectState(false);
-		}
-		if (pEHTemp != nullptr) {
-			delete pEHTemp;
 		}
 	}
 	return 0;
 }
 LRESULT WndProcHandler::fnHKProc_SingleClickPrefix_(const WndEventArgs& Wea) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 	auto profile = pCtx->GetProfile();
 	if (profile.invert_click_type) {
 		pCtx->SetClickType(Context::SINGLE_RIGHT_CLICK);
@@ -273,24 +269,20 @@ LRESULT WndProcHandler::fnHKProc_SingleClickPrefix_(const WndEventArgs& Wea) {
 	return 0;
 }
 LRESULT WndProcHandler::fnHKProc_Escape_(const WndEventArgs& Wea) {
-	Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 
 	EscSelectMode_(Wea.hWnd);
 	if (pCtx->GetFastSelectState()) {
 		HWND hForeWnd = pCtx->GetForeWindow();
 		CComPtr<IUIAutomationElement> pElement;
 		pElement = pCtx->GetElement();
-		//HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
-		const EventHandler* pEHTemp = pCtx->GetStructEventHandler();
+		CComPtr<IUnknown> pEHTemp = pCtx->GetStructEventHandler();
 		if (pElement != nullptr && pEHTemp != nullptr) {
-			//HRESULT hr = pAutomation->RemoveStructureChangedEventHandler(pElement,
-			//		(IUIAutomationStructureChangedEventHandler*)pEHTemp);
 
+			IUIAutomation* pAutomation = pCtx->GetAutomation();
 			HRESULT hr = pAutomation->RemoveAllEventHandlers();
+			//HRESULT hr = pAutomation->RemoveStructureChangedEventHandler(pElement, (IUIAutomationStructureChangedEventHandler*)pEHTemp.p);
 			pCtx->SetFastSelectState(false);
-		}
-		if (pEHTemp != nullptr) {
-			delete pEHTemp;
 		}
 	}
 	pCtx->SetMode(Context::NORMAL_MODE);
@@ -298,7 +290,7 @@ LRESULT WndProcHandler::fnHKProc_Escape_(const WndEventArgs& Wea) {
 	return 0;
 }
 LRESULT WndProcHandler::fnHKProc_ToggleEnable_(const WndEventArgs& Wea) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(Wea.hWnd, 0));
+	Context *pCtx = GetContext(Wea.hWnd);
 	bool EnableState = pCtx->GetEnableState();
 	if(EnableState) {
 		pCtx->SetEnableState(false);
@@ -312,7 +304,7 @@ LRESULT WndProcHandler::fnHKProc_ToggleEnable_(const WndEventArgs& Wea) {
 }
 LRESULT WndProcHandler::fnHKProc_Scroll_(const WndEventArgs& Wea) {
 	WORD VirtualKey = HIWORD(Wea.lParam);
-	if (isFocusOnEdit()) {
+	if (isFocusOnEdit(Wea.hWnd)) {
 		EditInputForward_(Wea.hWnd, VirtualKey);
 	}
 	else {
@@ -322,7 +314,7 @@ LRESULT WndProcHandler::fnHKProc_Scroll_(const WndEventArgs& Wea) {
 	return 0;
 }
 void WndProcHandler::EscSelectMode_(HWND hWnd) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
+	Context *pCtx = GetContext(hWnd);
 
     HWND handle = pCtx->GetTransWindow();
     // Enable window drawing.
@@ -348,7 +340,7 @@ void WndProcHandler::EscSelectMode_(HWND hWnd) {
 }
 
 void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
-    Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
+	Context *pCtx = GetContext(hWnd);
 	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
     // If the VIrtualKey is out of our expectation.
     // i.e. VirtualKey is not in A - Z.
@@ -500,10 +492,10 @@ void WndProcHandler::InvokeElement_(
         CONTROLTYPEID iControlType;
         HRESULT hr = pElement->get_CachedControlType(&iControlType); 
         throw_if_fail(hr); 
-		Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hWnd, 0));
+		Context *pCtx = GetContext(hWnd);
 		HWND TransWindow = pCtx->GetTransWindow();
 
-        if(iControlType == UIA_TreeItemControlTypeId) {
+        if(iControlType == UIA_ButtonControlTypeId) {
 
             // Sometimes the ClickablePoint is not actually clickable, but
             // bClickable equals 1. 
@@ -514,33 +506,23 @@ void WndProcHandler::InvokeElement_(
 			Rect = RectForPerMonitorDPI(TransWindow, Rect);
 			if (pCtx->GetClickType() == Context::LEFT_CLICK) {
 				LeftClick_((Rect.left + Rect.right) / 2,
+					(Rect.top + Rect.bottom) / 2, 1);
+			}
+			else if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
+				RightClick_((Rect.left + Rect.right) / 2,
+					(Rect.top + Rect.bottom) / 2, 1);
+			}
+        } else {
+			RECT Rect;
+			pElement->get_CachedBoundingRectangle(&Rect);
+			Rect = RectForPerMonitorDPI(TransWindow, Rect);
+			if (pCtx->GetClickType() == Context::LEFT_CLICK) {
+				LeftClick_((Rect.left + Rect.right) / 2,
 					(Rect.top + Rect.bottom) / 2, 2);
 			}
 			else if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
 				RightClick_((Rect.left + Rect.right) / 2,
 					(Rect.top + Rect.bottom) / 2, 2);
-			}
-        } else {
-            CComPtr<IUIAutomationInvokePattern> pInvoke;
-            hr = pElement->GetCachedPatternAs(
-                    UIA_InvokePatternId,
-                    __uuidof(IUIAutomationInvokePattern),
-                    reinterpret_cast<void **>(&pInvoke)
-                    );
-			if(pInvoke)
-				pInvoke->Invoke();
-			else {
-				RECT Rect;
-				pElement->get_CachedBoundingRectangle(&Rect);
-				Rect = RectForPerMonitorDPI(TransWindow, Rect);
-				if (pCtx->GetClickType() == Context::LEFT_CLICK) {
-					LeftClick_((Rect.left + Rect.right) / 2,
-						(Rect.top + Rect.bottom) / 2, 2);
-				}
-				else if (pCtx->GetClickType() == Context::RIGHT_CLICK) {
-					RightClick_((Rect.left + Rect.right) / 2,
-						(Rect.top + Rect.bottom) / 2, 2);
-				}
 			}
         }
     }

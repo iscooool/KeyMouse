@@ -9,12 +9,110 @@ inline void throw_if_fail(HRESULT hr) {
 		throw _com_error(hr);
 }
 
-IUIAutomation *pAutomation;
+//IUIAutomation *pAutomation;
 
 HRESULT InitializeUIAutomation(IUIAutomation **ppAutomation) {
 	return CoCreateInstance(CLSID_CUIAutomation, nullptr,
 		CLSCTX_INPROC_SERVER, IID_IUIAutomation,
 		reinterpret_cast<void**>(ppAutomation));
+}
+
+KeyMouse::Context *GetContext(HWND hMainWnd) {
+   return reinterpret_cast<KeyMouse::Context *>(GetClassLongPtr(hMainWnd, 0));
+}
+
+KeyMouse::PElementVec CachingElementsFromWindow(HWND hMainWnd, std::vector<HWND> TopWindowVec,KeyMouse::PElementVec (*lpEnumFunc)(HWND, HWND)){
+	KeyMouse::Context *pCtx = GetContext(hMainWnd);
+	IUIAutomation* pAutomation = pCtx->GetAutomation();
+
+	KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
+	KeyMouse::PElementVec pTempElementVec;
+
+	
+	auto& pCacheWindow = pCtx->GetCacheWindow();
+
+	for (auto it = TopWindowVec.begin(); it != TopWindowVec.end(); ++it) {
+		if (pCacheWindow->count(*it) == 0) {
+			CComPtr<IUnknown> pEHTemp(new KeyMouse::CacheEventHandler(hMainWnd, *it));
+			CComPtr<IUIAutomationElement> pElement;
+			HRESULT hr = pAutomation->ElementFromHandle(*it, &pElement);
+			hr = pAutomation->AddStructureChangedEventHandler(
+				pElement,
+				TreeScope_Children,
+				NULL,
+				(IUIAutomationStructureChangedEventHandler*)pEHTemp.p
+			);
+
+			CComPtr<IUnknown> pPropertyChangedEHTemp(new KeyMouse::PropertyChangedEventHandler(hMainWnd));
+			PROPERTYID pPIDProperties[] = {
+				UIA_IsOffscreenPropertyId,
+				UIA_BoundingRectanglePropertyId
+			};
+			hr = pAutomation->AddPropertyChangedEventHandlerNativeArray(
+				pElement,
+				TreeScope_Subtree,
+				NULL,
+				(IUIAutomationPropertyChangedEventHandler*) pPropertyChangedEHTemp.p,
+				pPIDProperties,
+				sizeof(pPIDProperties) / sizeof(pPIDProperties[0])
+			);
+			auto pEventHandlers = pCtx->GetEventHandlers();
+			(*pEventHandlers)[*it].push_back(pEHTemp);
+			(*pEventHandlers)[*it].push_back(pPropertyChangedEHTemp);
+			pCtx->SetEventHandlers(pEventHandlers);
+		}
+	}
+
+	auto Profile = pCtx->GetProfile();
+	if (!Profile.only_forewindow) {
+
+
+#ifdef _DEBUG
+        DWORD start_time = GetTickCount();
+#endif
+		size_t nThread = TopWindowVec.size();
+		std::vector<std::future<KeyMouse::PElementVec>> Futures(nThread);
+		// Task assignment for multi-threads.
+		for(size_t i = 0; i < nThread; ++i) {
+			HWND hTopWindow = TopWindowVec[i];
+			Futures[i] = std::async(
+				lpEnumFunc,
+				hMainWnd,
+				hTopWindow
+			);
+		}
+		for(size_t i = 0; i < nThread; ++i) {
+			auto FutureGet = Futures[i].get();
+			HWND hTopWindow = TopWindowVec[i];
+			// cache the elements for hTopWindow.
+			(*pCacheWindow)[hTopWindow]["AllCache"] = FutureGet;
+
+			if (FutureGet) {
+			pElementVec->insert(pElementVec->end(), 
+				FutureGet->begin(), FutureGet->end());
+			}
+		}
+#ifdef _DEBUG
+        DWORD end_time = GetTickCount();
+        DWORD total_time = end_time - start_time;
+        cout<<total_time<<std::endl;
+#endif
+	}
+	else {
+		for (HWND hTopWindow : TopWindowVec) {
+			pTempElementVec = lpEnumFunc(hMainWnd, hTopWindow);
+			// cache the elements for hTopWindow.
+			(*pCacheWindow)[hTopWindow]["AllCache"] = pTempElementVec;
+			if (pTempElementVec) {
+				pElementVec->insert(pElementVec->end(),
+					pTempElementVec->begin(), pTempElementVec->end());
+			}
+		}
+	}
+		
+	pCtx->SetCacheExpiredState(false);
+	pCtx->SetCacheExpiredStructChanged(false);
+	return	pElementVec;
 }
 
 struct ParamForEnum
@@ -60,23 +158,21 @@ BOOL CALLBACK lpEnumMonitor(HMONITOR hMonitor, HDC hDC, LPRECT lpRect, LPARAM lP
 }
 
 std::thread t_tagmap;
-std::mutex mtx;
-void SetTagMapThread(HWND hWnd) {
-	mtx.lock();
-	
+void SetTagMapThread(HWND hWnd, bool bUseCache) {
 	HWND *phMainWnd = reinterpret_cast<HWND *>(GetClassLongPtr(hWnd, 0));
-	KeyMouse::Context *pCtx =
-		reinterpret_cast<KeyMouse::Context *>(
-			GetClassLongPtr(*phMainWnd, 0)
-			);
+	KeyMouse::Context *pCtx = GetContext(*phMainWnd);
 	if (pCtx == nullptr)
 		return;
+
+
+	IUIAutomation* pAutomation = pCtx->GetAutomation();
+	pCtx->SetTransWindow(hWnd);
 	KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
 	KeyMouse::PElementVec pTempElementVec;
-	pCtx->ClearTagMap();
-	pCtx->SetTransWindow(hWnd);
 
 	HWND hForeWnd = GetForegroundWindow();
+
+
 	std::vector<HWND> TopWindowVec;
 	
 	auto Profile = pCtx->GetProfile();
@@ -99,54 +195,68 @@ void SetTagMapThread(HWND hWnd) {
 		TopWindowVec.push_back(hForeWnd);
 		EnumDisplayMonitors(NULL, NULL, lpEnumMonitor, reinterpret_cast<LPARAM>(&TopWindowVec));
 
-#ifdef _DEBUG
-        DWORD start_time = GetTickCount();
-#endif
 
-		size_t nThread = TopWindowVec.size();
-		std::vector<std::future<KeyMouse::PElementVec>> Futures(nThread);
-		std::vector<KeyMouse::PElementVec> Results(nThread);
-		// Task assignment for multi-threads.
-		for(size_t i = 0; i < nThread; ++i) {
-			HWND hTopWindow = TopWindowVec[i];
-			Futures[i] = std::async(
-				EnumConditionedElement,
-				*phMainWnd,
-				hTopWindow
-			);
-		}
-		for(size_t i = 0; i < nThread; ++i) {
-			Results[i] = Futures[i].get();
-			if (Results[i]) {
-			pElementVec->insert(pElementVec->end(), 
-				Results[i]->begin(), Results[i]->end());
-			}
-		}
-#ifdef _DEBUG
-        DWORD end_time = GetTickCount();
-        DWORD total_time = end_time - start_time;
-        cout<<total_time<<std::endl;
-#endif
 	}
 	else {
 		pCtx->SetForeWindow(hForeWnd);
 		TopWindowVec.push_back(hForeWnd);
-#ifdef _DEBUG
-        DWORD start_time = GetTickCount();
-#endif
-		for (HWND hTopWindow : TopWindowVec) {
-			pTempElementVec = EnumConditionedElement(*phMainWnd, hTopWindow);
-			if (pTempElementVec) {
-				pElementVec->insert(pElementVec->end(), 
-					pTempElementVec->begin(), pTempElementVec->end());
+	}
+
+	DWORD LastTime = pCtx->GetLastCacheTick();
+	DWORD LastInputTime = pCtx->GetLastInputTick();
+    DWORD CurrentTime = GetTickCount();
+	if (bUseCache && !pCtx->GetCacheExpiredState() && !pCtx->GetCacheExpiredStructChanged()) {
+		for(auto it = TopWindowVec.begin(); it != TopWindowVec.end();) {
+			auto& pCacheWindow = pCtx->GetCacheWindow();
+			if (pCacheWindow->count(*it) > 0) {
+				auto& pCache = (*pCacheWindow)[*it]["AllCache"];
+				if (pCache) {
+					pElementVec->insert(pElementVec->end(),
+						pCache->begin(), pCache->end());
+				}
+				it = TopWindowVec.erase(it);
+			}
+			else {
+				//TODO: eventhandler needs to be cleaned up.
+				CComPtr<IUnknown> pEHTemp(new KeyMouse::CacheEventHandler(*phMainWnd, *it));
+				CComPtr<IUIAutomationElement> pElement;
+				HRESULT hr = pAutomation->ElementFromHandle(*it, &pElement);
+				hr = pAutomation->AddStructureChangedEventHandler(
+					pElement,
+					TreeScope_Children,
+					NULL,
+					(IUIAutomationStructureChangedEventHandler*)pEHTemp.p
+				);
+
+				CComPtr<IUnknown> pPropertyChangedEHTemp(new KeyMouse::PropertyChangedEventHandler(*phMainWnd));
+				PROPERTYID pPIDProperties[] = {
+					UIA_IsOffscreenPropertyId,
+					UIA_BoundingRectanglePropertyId
+				};
+				hr = pAutomation->AddPropertyChangedEventHandlerNativeArray(pElement,
+					TreeScope_Subtree,
+					NULL,
+					(IUIAutomationPropertyChangedEventHandler*) pPropertyChangedEHTemp.p,
+					pPIDProperties,
+					sizeof(pPIDProperties) / sizeof(pPIDProperties[0])
+				);
+				auto pEventHandlers = pCtx->GetEventHandlers();
+				(*pEventHandlers)[*it].push_back(pEHTemp);
+				(*pEventHandlers)[*it].push_back(pPropertyChangedEHTemp);
+				pCtx->SetEventHandlers(pEventHandlers);
+				++it;
 			}
 		}
-#ifdef _DEBUG
-        DWORD end_time = GetTickCount();
-        DWORD total_time = end_time - start_time;
-        cout<<total_time<<std::endl;
-#endif
 	}
+
+	KeyMouse::PElementVec pElementsFromUncache;
+	pElementsFromUncache = CachingElementsFromWindow(*phMainWnd, TopWindowVec, EnumConditionedElement);
+	if (pElementsFromUncache) {
+		pElementVec->insert(pElementVec->end(), 
+			pElementsFromUncache->begin(), pElementsFromUncache->end());
+	}
+	
+	//pElementVec = EnumTargetWindow(*phMainWnd, hForeWnd);
 
 	// find the elements of taskbar.
 	CComPtr<IUIAutomationElement> pDesktop;
@@ -211,8 +321,8 @@ void SetTagMapThread(HWND hWnd) {
 	}
 
 	//-------------------------------------------------------------------
-	KeyMouse::PTagMap TagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
-	KeyMouse::PTagMap WindowMap(new std::map<string, CComPtr<IUIAutomationElement>>);
+	KeyMouse::PTagMap pTagMap(new std::map<string, CComPtr<IUIAutomationElement>>);
+	KeyMouse::PTagMap pWindowMap(new std::map<string, CComPtr<IUIAutomationElement>>);
 	KeyMouse::TagCreator TC;
 	std::queue<string> TagQueue = TC.AllocTag(pElementVec->size() + pWindowVec->size());
 	// the last one of the queue must be the longest one.
@@ -224,25 +334,123 @@ void SetTagMapThread(HWND hWnd) {
 		TagQueue.pop();
 
 		// insert the tag and Element into the keymap.
-		TagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
+		pTagMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
 					 szTemp, pTempElement)); 
 	}
-	pCtx->SetTagMap(TagMap);
 	for(auto& pTempElement : *pWindowVec) {
 		string szTemp = TagQueue.front();
 		TagQueue.pop();
 
 		// insert the tag and Element into the keymap.
-		WindowMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
+		pWindowMap->insert(std::pair<string, CComPtr<IUIAutomationElement>>(
 					 szTemp, pTempElement)); 
 	}
-	pCtx->SetWindowMap(WindowMap);
+
+	HDC hDC = GetDC(hWnd);
+	if (pWindowMap != nullptr) {
+		for (auto& item : *pWindowMap) {
+			RECT Rect;
+			item.second->get_CachedBoundingRectangle(&Rect);
+		
+			// print the hint on the screen.
+			const TCHAR *psText = item.first.c_str();
+			POINT point;
+			point.x = (Rect.left + Rect.right) / 2;
+			point.y = Rect.top;
+			KeyMouse::Font font = Profile.window_tag_font;
+			DrawTag(*phMainWnd, hWnd, hDC, point, psText, font);
+			
+		}
+	}
+	if (pTagMap != nullptr) {
+		for (auto& item : *pTagMap) {
+			RECT Rect;
+			item.second->get_CachedBoundingRectangle(&Rect);
+		
+			// print the hint on the screen.
+			const TCHAR *psText = item.first.c_str();
+			POINT point;
+			point.x = Rect.left;
+			point.y = Rect.top;
+			DrawTag(*phMainWnd, hWnd, hDC, point, psText, Profile.font);
+			
+		}
+	}
+	ReleaseDC(hWnd, hDC);
+	pCtx->SetTagMap(pTagMap);
+	pCtx->SetWindowMap(pWindowMap);
 
 	VariantClear(&Val);
-	mtx.unlock();
 	RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
 
 }
+
+
+void CacheThread(HWND hWnd) {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY);
+
+	KeyMouse::Context *pCtx =
+		reinterpret_cast<KeyMouse::Context *>(
+			GetClassLongPtr(hWnd, 0)
+			);
+	if (pCtx == nullptr)
+		return;
+
+	bool bIsCacheExpired = pCtx->GetCacheExpiredState();
+	bool bCacheExpiredStructChanged = pCtx->GetCacheExpiredStructChanged();
+	LASTINPUTINFO Lii;
+	Lii.cbSize = sizeof(LASTINPUTINFO);
+	GetLastInputInfo(&Lii);
+    DWORD current_time = GetTickCount();
+	DWORD LastTime = pCtx->GetLastInputTick();
+	pCtx->SetLastInputTick(Lii.dwTime);
+	DWORD time = current_time - Lii.dwTime;
+	if ((current_time - LastTime > 50 && bIsCacheExpired) ||
+		(current_time - LastTime > 50 && bCacheExpiredStructChanged)) {
+		if (pCtx->GetEnableState()) {
+			KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
+			KeyMouse::PElementVec pTempElementVec;
+
+			HWND hForeWnd = GetForegroundWindow();
+			std::vector<HWND> TopWindowVec;
+			
+			auto Profile = pCtx->GetProfile();
+			if (!Profile.only_forewindow) {
+				HMONITOR hMonitor = MonitorFromWindow(hForeWnd, MONITOR_DEFAULTTONEAREST);
+				MONITORINFO MonitorInfo;
+				MonitorInfo.cbSize = sizeof(MONITORINFO);
+				GetMonitorInfo(hMonitor, &MonitorInfo);
+
+				// due to the hardness of identifing real top visible winodow on primary monitor.
+				// when foreground window is not on primary monitor, we use hwnd previously stored
+				// in ctx as the top visible window on primary monitor.
+				if (MonitorInfo.dwFlags != MONITORINFOF_PRIMARY) {
+					hForeWnd = pCtx->GetForeWindow();
+				}
+				else {
+					pCtx->SetForeWindow(hForeWnd);
+				}
+
+				TopWindowVec.push_back(hForeWnd);
+				EnumDisplayMonitors(NULL, NULL, lpEnumMonitor, reinterpret_cast<LPARAM>(&TopWindowVec));
+
+
+			}
+			else {
+				pCtx->SetForeWindow(hForeWnd);
+				TopWindowVec.push_back(hForeWnd);
+			}
+
+			pCtx->SetLastcacheTick(current_time);
+			pCtx->SetCacheExpiredState(false);
+			pCtx->SetCacheExpiredStructChanged(false);
+			CachingElementsFromWindow(hWnd, TopWindowVec, EnumConditionedElementForCaching);
+		}
+	}
+
+	CoUninitialize();
+}
+
 /**
 * @brief: WndProc2 is used by a transparent window which is used to paint hints
 * on.
@@ -264,46 +472,6 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		PAINTSTRUCT ps = { 0 };
 		HDC hDC = BeginPaint(hWnd, &ps);
-		HWND *phMainWnd = reinterpret_cast<HWND *>(GetClassLongPtr(hWnd, 0));
-		KeyMouse::Context *pCtx =
-			reinterpret_cast<KeyMouse::Context *>(
-				GetClassLongPtr(*phMainWnd, 0)
-				);
-		if (mtx.try_lock() && pCtx) {
-			auto profile = pCtx->GetProfile();
-			const KeyMouse::PTagMap& pWindowMap = pCtx->GetWindowMap();
-			if (pWindowMap != nullptr) {
-				for (auto& item : *pWindowMap) {
-					RECT Rect;
-					item.second->get_CachedBoundingRectangle(&Rect);
-				
-					// print the hint on the screen.
-					const TCHAR *psText = item.first.c_str();
-					POINT point;
-					point.x = (Rect.left + Rect.right) / 2;
-					point.y = Rect.top;
-					KeyMouse::Font font = profile.window_tag_font;
-					DrawTag(*phMainWnd, hWnd, hDC, point, psText, font);
-					
-				}
-			}
-			const KeyMouse::PTagMap& pTagMap = pCtx->GetTagMap();
-			if (pTagMap != nullptr) {
-				for (auto& item : *pTagMap) {
-					RECT Rect;
-					item.second->get_CachedBoundingRectangle(&Rect);
-				
-					// print the hint on the screen.
-					const TCHAR *psText = item.first.c_str();
-					POINT point;
-					point.x = Rect.left;
-					point.y = Rect.top;
-					DrawTag(*phMainWnd, hWnd, hDC, point, psText, profile.font);
-					
-				}
-			}
-			mtx.unlock();
-		}
 		EndPaint(hWnd, &ps);
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 
@@ -321,7 +489,7 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				GetClassLongPtr(*phMainWnd, 0)
 				);
 		if (pCtx) {
-			t_tagmap = std::thread(SetTagMapThread, hWnd);
+			t_tagmap = std::thread(SetTagMapThread, hWnd, true);
 			t_tagmap.detach();
 		}
 	}
@@ -336,6 +504,7 @@ LRESULT CALLBACK WndProc2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	return 0;
 }
+
 
 /**
 * @brief: create a transparent window to paint hints on.
@@ -412,6 +581,248 @@ HWND CreateTransparentWindow(HINSTANCE hInstance, HWND hMainWnd)
 }
 
 
+BOOL CALLBACK lpGetControlCoordinate(_In_ HWND hwnd, _In_ LPARAM lParam) {
+	std::vector<HWND> *phWndVec = reinterpret_cast<std::vector<HWND> *>(lParam);
+
+	HWND hChild = GetWindow(hwnd, GW_CHILD);
+	//if(hChild == NULL && IsWindowVisible(hwnd))
+		phWndVec->push_back(hwnd);
+	return TRUE;
+};
+
+ KeyMouse::PElementVec EnumTargetWindow(HWND hMainWnd, HWND hForeWnd) {
+	KeyMouse::Context *pCtx = GetContext(hMainWnd);
+	std::unique_ptr<std::vector<HWND>> phWndVec(new std::vector<HWND>);
+	EnumChildWindows(hForeWnd, lpGetControlCoordinate, reinterpret_cast<LPARAM>(phWndVec.get()));
+
+	KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
+	for (auto hTargetWnd : *phWndVec) {
+	}
+		KeyMouse::PElementVec pTempVec = EnumConditionedElement(hMainWnd, hForeWnd);
+		pElementVec->insert(pElementVec->end(), 
+			pTempVec->begin(), pTempVec->end());
+	return pElementVec;
+}
+
+ CComPtr<IUIAutomationCondition> GetDesiredCondition(HWND hMainWnd) {
+	KeyMouse::Context *pCtx = GetContext(hMainWnd);
+	IUIAutomation* pAutomation = pCtx->GetAutomation();
+	 HRESULT hr = S_OK;
+	//----------------------create element type condition ----------------------------
+	// Define the condition by pTotalCondition to find all desired items.
+	std::vector<PROPERTYID> vPropertyId = {
+		UIA_ListItemControlTypeId,
+		UIA_ButtonControlTypeId,
+		UIA_TreeItemControlTypeId,
+		UIA_TabItemControlTypeId,
+		UIA_HyperlinkControlTypeId,
+		UIA_SplitButtonControlTypeId,
+		UIA_ScrollBarControlTypeId,
+		UIA_MenuItemControlTypeId
+	};
+	SAFEARRAY *pConditionVector = SafeArrayCreateVector(
+			VT_UNKNOWN,
+			0,
+			vPropertyId.size()
+			);
+
+	LONG i = 0;
+
+	// construct an condition array and use it for creating a big
+	// OrCondition.
+	for (PROPERTYID PropertyId : vPropertyId) {
+		IUIAutomationCondition *pCondition;
+		VARIANT Val;
+		Val.vt = VT_I4;
+		Val.lVal = PropertyId;
+		hr = pAutomation->CreatePropertyCondition(UIA_ControlTypePropertyId,
+			Val,
+			&pCondition);
+		throw_if_fail(hr);
+		
+		hr = SafeArrayPutElement(pConditionVector, &i, pCondition); 
+		throw_if_fail(hr);
+
+		++i;
+	}
+	CComPtr<IUIAutomationCondition> pTotalOrCondition;
+	
+	hr = pAutomation->CreateOrConditionFromArray(
+			pConditionVector,
+			&pTotalOrCondition
+			);
+	throw_if_fail(hr);
+
+	//----------------------create bool condition ----------------------------
+	std::vector<std::tuple<PROPERTYID, VARIANT_BOOL>> vPropertyTuple = {
+		{UIA_IsEnabledPropertyId, VARIANT_TRUE},
+		{UIA_IsOffscreenPropertyId, VARIANT_FALSE}
+	 };
+
+	pConditionVector = SafeArrayCreateVector(
+			VT_UNKNOWN,
+			0,
+			vPropertyTuple.size()
+			);
+
+	i = 0;
+
+	for (std::tuple<PROPERTYID, VARIANT_BOOL> PropertyTuple : vPropertyTuple) {
+		IUIAutomationCondition *pCondition;
+		VARIANT Val;
+		Val.vt = VT_BOOL;
+		Val.lVal = std::get<1>(PropertyTuple);
+		hr = pAutomation->CreatePropertyCondition(std::get<0>(PropertyTuple),
+			Val,
+			&pCondition);
+		
+		hr = SafeArrayPutElement(pConditionVector, &i, pCondition); 
+		throw_if_fail(hr);
+
+		++i;
+	}
+	CComPtr<IUIAutomationCondition> pTotalAndCondition;
+	
+	hr = pAutomation->CreateAndConditionFromArray(
+			pConditionVector,
+			&pTotalAndCondition
+			);
+	throw_if_fail(hr);
+//----------------------------------------------------------------------------	
+
+	CComPtr<IUIAutomationCondition> pTotalCondition;
+	hr = pAutomation->CreateAndCondition(pTotalAndCondition,
+			pTotalOrCondition,
+			&pTotalCondition
+			);
+
+	hr = SafeArrayDestroy(pConditionVector);
+	throw_if_fail(hr);
+	return pTotalCondition;
+ }
+
+ CComPtr<IUIAutomationCacheRequest> GetDesiredCacheRequest(HWND hMainWnd) {
+	KeyMouse::Context *pCtx = GetContext(hMainWnd);
+	IUIAutomation* pAutomation = pCtx->GetAutomation();
+
+    CComPtr<IUIAutomationCacheRequest> pCacheRequest;
+	HRESULT hr = pAutomation->CreateCacheRequest(&pCacheRequest);
+	throw_if_fail(hr);
+
+	hr = pCacheRequest->AddPattern(UIA_ScrollPatternId);
+	throw_if_fail(hr);
+	hr = pCacheRequest->AddPattern(UIA_InvokePatternId);
+	throw_if_fail(hr);
+	hr = pCacheRequest->AddProperty(UIA_BoundingRectanglePropertyId);
+	throw_if_fail(hr);
+	hr = pCacheRequest->AddProperty(UIA_ControlTypePropertyId);
+	throw_if_fail(hr);
+	hr = pCacheRequest->AddProperty(UIA_IsOffscreenPropertyId);
+	throw_if_fail(hr);
+
+	return pCacheRequest;
+}
+/**
+* @brief: the much slow version of Findall subtree. but it doesn't
+*         freeze the target window. It's used for caching.
+*
+* @param: HWND hMainWnd: the main window handle.
+*		: int restric_depth : the search depth.
+*		: IUIAutomationElement *element : the root node to walk.
+*       : IUIAutomationCacheRequest * cacheRequest
+*       : IUIAutomationTreeWalker *walker
+*       : std::vector<CComPtr<IUIAutomationElement>> *found
+*
+* @return: HRESULT
+*/
+HRESULT WalkDesiredElementBuildCache(
+	HWND hMainWnd,
+	int restrict_depth,
+	IUIAutomationElement *element,
+	IUIAutomationCondition *condition,
+	IUIAutomationCacheRequest *cacheRequest,
+	IUIAutomationTreeWalker *walker,
+	std::vector<CComPtr<IUIAutomationElement>> *found)
+ {
+	HRESULT hr = S_OK;
+	KeyMouse::Context *pCtx = GetContext(hMainWnd);
+	IUIAutomation* pAutomation = pCtx->GetAutomation();
+	CComPtr<IUIAutomationCondition> pTrueCondition;
+	pAutomation->CreateTrueCondition(&pTrueCondition);
+	
+	CComPtr<IUIAutomationTreeWalker> pWalker;
+	pAutomation->get_RawViewWalker(&pWalker);
+
+	int nDepth = 0;
+	std::queue<CComPtr<IUIAutomationElement>> queue;
+	queue.push(element);
+	CComPtr<IUIAutomationElement> pCurrent;
+	CComPtr<IUIAutomationElement> pExist;
+	do {
+		pCurrent = queue.front();
+		queue.pop();
+		//CComPtr<IUIAutomationElement> pFirstChild;
+
+		//	pWalker->GetFirstChildElementBuildCache(
+		//		pCurrent, cacheRequest, &pFirstChild);
+
+		//if (pFirstChild == NULL) {	// when current has no child.
+		//}
+		//else {	//pCurrent is not a leaf element.
+		//	queue.push(pFirstChild);
+		//	IUIAutomationElement* pPrev = NULL;
+		//	CComPtr<IUIAutomationElement> pSecond;
+		//	pWalker->GetNextSiblingElementBuildCache(pFirstChild, cacheRequest, &pSecond);
+		//	pPrev = pSecond;
+		//	while (pPrev != NULL) {
+		//		CComPtr<IUIAutomationElement> pNext;
+		//		BOOL IsOffScreen = FALSE;
+		//		pPrev->get_CachedIsOffscreen(&IsOffScreen);
+		//		if (IsOffScreen == FALSE) {
+		//			queue.push(pPrev);
+		//		}
+		//		pPrev = pNext;
+		//		pWalker->GetNextSiblingElementBuildCache(pPrev, cacheRequest, &pNext);
+		//	}
+		//}
+
+		if (pCurrent != nullptr) {
+			HRESULT hr;
+
+			CComPtr<IUIAutomationElementArray> pChildrenElementArray;
+			hr = pCurrent->FindAllBuildCache(TreeScope_Children, 
+					pTrueCondition,
+					cacheRequest,
+					&pChildrenElementArray);
+			throw_if_fail(hr);
+			
+			int nChildrenNum = 0;
+			if(pChildrenElementArray != nullptr) {
+				hr = pChildrenElementArray->get_Length(&nChildrenNum);
+				throw_if_fail(hr);
+			}
+			for (int i = 0; i < nChildrenNum; ++i) {
+				CComPtr<IUIAutomationElement> pChild;
+				pChildrenElementArray->GetElement(i, &pChild);
+				if (pChild != nullptr) {
+					BOOL IsOffScreen = FALSE;
+					pChild->get_CachedIsOffscreen(&IsOffScreen);
+					if (IsOffScreen == FALSE) {
+						queue.push(pChild);
+					}
+				}
+
+			}
+			pCurrent->FindFirst(TreeScope_Element, condition, &pExist.p);
+			if (pExist != nullptr) {
+				found->push_back(pCurrent);
+			}
+		}
+
+
+	} while (!queue.empty());
+	return S_OK;
+}
 /**
 * @brief: TODO: need to be refactored.
 *         enumerate all element of foreground window which satisfies specific
@@ -426,13 +837,11 @@ KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
 	try {
 
         // Get current context.
-        KeyMouse::Context *pCtx = 
-            reinterpret_cast<KeyMouse::Context *>(
-                    GetClassLongPtr(hMainWnd, 0)
-                    );
+		KeyMouse::Context *pCtx = GetContext(hMainWnd);
 		if (!pCtx) {
 			return nullptr;
 		}
+		IUIAutomation* pAutomation = pCtx->GetAutomation();
 		HWND hTransWnd = pCtx->GetTransWindow();
 		CComPtr<IUIAutomationElement> pElement;
 		HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
@@ -442,7 +851,7 @@ KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
         // element tree change.
 		if (pCtx->GetFastSelectState()) {
 			// add event handler to detect changing when in consercutive mode.
-			KeyMouse::EventHandler* pEHTemp = new KeyMouse::EventHandler(hMainWnd);
+			CComPtr<KeyMouse::EventHandler> pEHTemp(new KeyMouse::EventHandler(hMainWnd));
 			hr = pAutomation->AddStructureChangedEventHandler(pElement,
 				TreeScope_Subtree, NULL,
 				(IUIAutomationStructureChangedEventHandler*)pEHTemp);
@@ -460,176 +869,33 @@ KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
 		}
 		CComPtr<IUIAutomationElementArray> pElementArray;
 
-		//----------------------create element type condition ----------------------------
-		// Define the condition by pTotalCondition to find all desired items.
-        std::vector<PROPERTYID> vPropertyId = {
-            UIA_ListItemControlTypeId,
-            UIA_ButtonControlTypeId,
-            UIA_TreeItemControlTypeId,
-            UIA_TabItemControlTypeId,
-            UIA_HyperlinkControlTypeId,
-			UIA_SplitButtonControlTypeId,
-            UIA_ScrollBarControlTypeId,
-			UIA_MenuItemControlTypeId
-        };
-        SAFEARRAY *pConditionVector = SafeArrayCreateVector(
-                VT_UNKNOWN,
-                0,
-                vPropertyId.size()
-                );
-
-        LONG i = 0;
-
-        // construct an condition array and use it for creating a big
-        // OrCondition.
-        for (PROPERTYID PropertyId : vPropertyId) {
-            IUIAutomationCondition *pCondition;
-            VARIANT Val;
-            Val.vt = VT_I4;
-            Val.lVal = PropertyId;
-            hr = pAutomation->CreatePropertyCondition(UIA_ControlTypePropertyId,
-                Val,
-                &pCondition);
-            throw_if_fail(hr);
-            
-            hr = SafeArrayPutElement(pConditionVector, &i, pCondition); 
-            throw_if_fail(hr);
-
-            ++i;
-        }
-        CComPtr<IUIAutomationCondition> pTotalOrCondition;
         
-        hr = pAutomation->CreateOrConditionFromArray(
-                pConditionVector,
-                &pTotalOrCondition
-                );
-        throw_if_fail(hr);
-
-		//----------------------create bool condition ----------------------------
-        std::vector<std::tuple<PROPERTYID, VARIANT_BOOL>> vPropertyTuple = {
-			{UIA_IsEnabledPropertyId, VARIANT_TRUE},
-			{UIA_IsOffscreenPropertyId, VARIANT_FALSE}
-         };
-
-        pConditionVector = SafeArrayCreateVector(
-                VT_UNKNOWN,
-                0,
-                vPropertyTuple.size()
-                );
-
-        i = 0;
-
-        for (std::tuple<PROPERTYID, VARIANT_BOOL> PropertyTuple : vPropertyTuple) {
-            IUIAutomationCondition *pCondition;
-            VARIANT Val;
-            Val.vt = VT_BOOL;
-			Val.lVal = std::get<1>(PropertyTuple);
-            hr = pAutomation->CreatePropertyCondition(std::get<0>(PropertyTuple),
-                Val,
-                &pCondition);
-            
-            hr = SafeArrayPutElement(pConditionVector, &i, pCondition); 
-            throw_if_fail(hr);
-
-            ++i;
-        }
-        CComPtr<IUIAutomationCondition> pTotalAndCondition;
-        
-        hr = pAutomation->CreateAndConditionFromArray(
-                pConditionVector,
-                &pTotalAndCondition
-                );
-        throw_if_fail(hr);
-	//----------------------------------------------------------------------------	
-
-        CComPtr<IUIAutomationCondition> pTotalCondition;
-        hr = pAutomation->CreateAndCondition(pTotalAndCondition,
-                pTotalOrCondition,
-                &pTotalCondition
-                );
-        
+		CComPtr<IUIAutomationCondition> pTotalCondition = GetDesiredCondition(hMainWnd);
         // add cache request for desired patterns and properties.
-        CComPtr<IUIAutomationCacheRequest> pCacheRequest;
-        hr = pAutomation->CreateCacheRequest(&pCacheRequest);
-        throw_if_fail(hr);
+        CComPtr<IUIAutomationCacheRequest> pCacheRequest = GetDesiredCacheRequest(hMainWnd);
 
-        hr = pCacheRequest->AddPattern(UIA_ScrollPatternId);
-        throw_if_fail(hr);
-        hr = pCacheRequest->AddPattern(UIA_InvokePatternId);
-        throw_if_fail(hr);
-        hr = pCacheRequest->AddProperty(UIA_BoundingRectanglePropertyId);
-        throw_if_fail(hr);
-        hr = pCacheRequest->AddProperty(UIA_ControlTypePropertyId);
-        throw_if_fail(hr);
-
-        CComPtr<IUIAutomationCondition> pTrueCondition;
-        hr = pAutomation->CreateTrueCondition(&pTrueCondition);
         throw_if_fail(hr);
 		CComPtr<IUIAutomationElementArray> pChildrenElementArray;
-        // Find all children of focus window for multi-threads task
-        // partition.
-        hr = pElement->FindAllBuildCache(TreeScope_Children, 
-                pTrueCondition,
+        hr = pElement->FindAllBuildCache(TreeScope_Descendants, 
+                pTotalCondition,
                 pCacheRequest,
                 &pChildrenElementArray);
         throw_if_fail(hr);
-        
+
         int nChildrenNum = 0;
         if(pChildrenElementArray != nullptr) {
             hr = pChildrenElementArray->get_Length(&nChildrenNum);
             throw_if_fail(hr);
         }
-        std::unique_ptr<std::thread[]> pThread(new std::thread[nChildrenNum]);
-        std::unique_ptr<CComPtr<IUIAutomationElementArray>[]> 
-            pThreadElementArray(new CComPtr<IUIAutomationElementArray>[nChildrenNum]);
-        // Task assignment for multi-threads.
-        for(int j = 0; j < nChildrenNum; ++j) {
-            IUIAutomationElement *pTempElement;
-            pChildrenElementArray->GetElement(j, &pTempElement);
-            pThread[j] = std::thread(&IUIAutomationElement::FindAllBuildCache,
-                    pTempElement,
-                    TreeScope_Subtree,
-                    pTotalCondition,
-                    pCacheRequest,
-                    &pThreadElementArray[j]
-                    );
-        }
 
-        int nTotalLength = 0;
-        for(int j = 0; j < nChildrenNum; ++j) {
-            pThread[j].join();
-            int length = 0;
-			if (pThreadElementArray[j] != nullptr) {
-				hr = pThreadElementArray[j]->get_Length(&length);
-			}
-            nTotalLength += length;
-            throw_if_fail(hr);
-
-        }
-
-        hr = SafeArrayDestroy(pConditionVector);
-        throw_if_fail(hr);
 
 		KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
+		for (int i = 0; i < nChildrenNum; ++i) {
+			CComPtr<IUIAutomationElement> pTempElement;
+			pChildrenElementArray->GetElement(i, &pTempElement);
+			pElementVec->push_back(pTempElement);
 
-		
-		// Traverse the items of ElementArray and paint all hints on the screen.
-        for(int i = 0; i < nChildrenNum && nTotalLength > 0; ++i) {
-            int length;
-			if (pThreadElementArray[i] == nullptr) {
-				continue;
-			}
-            hr = pThreadElementArray[i]->get_Length(&length);
-            throw_if_fail(hr);
-            IUIAutomationElementArray *pElementArray = pThreadElementArray[i];
-            for (int j = 0; j < length; ++j) {
-                CComPtr<IUIAutomationElement> pTempElement;
-                pElementArray->GetElement(j, &pTempElement);
-				pElementVec->push_back(pTempElement);
-
-            }
-        }
-       // LockWindowUpdate(hForeWnd);
+		}
 		
 		return pElementVec;
 	}
@@ -639,13 +905,64 @@ KeyMouse::PElementVec EnumConditionedElement(HWND hMainWnd, HWND hForeWnd) {
 }
 
 /**
+* @brief: TODO: need to be refactored.
+*         enumerate all element of foreground window which satisfies specific
+*         condition and paint hint on transparent window.
+*
+* @param: HWND hMainWnd: the window store global context.
+*       : HDC hdc: the HDC of transparent window.
+*
+* @return: PElementVec: a vector of all elements found in foreground window.
+*/
+KeyMouse::PElementVec EnumConditionedElementForCaching(HWND hMainWnd, HWND hForeWnd) {
+	try {
+
+        // Get current context.
+		KeyMouse::Context *pCtx = GetContext(hMainWnd);
+		if (!pCtx) {
+			return nullptr;
+		}
+		IUIAutomation* pAutomation = pCtx->GetAutomation();
+		HWND hTransWnd = pCtx->GetTransWindow();
+		CComPtr<IUIAutomationElement> pElement;
+		HRESULT hr = pAutomation->ElementFromHandle(hForeWnd, &pElement);
+		throw_if_fail(hr);
+
+		CComPtr<IUIAutomationElementArray> pElementArray;
+		CComPtr<IUIAutomationCondition> pTotalCondition = GetDesiredCondition(hMainWnd);
+        // add cache request for desired patterns and properties.
+        CComPtr<IUIAutomationCacheRequest> pCacheRequest = GetDesiredCacheRequest(hMainWnd);
+
+        throw_if_fail(hr);
+		CComPtr<IUIAutomationElementArray> pChildrenElementArray;
+		KeyMouse::PElementVec pElementVec(new std::vector<CComPtr<IUIAutomationElement>>);
+		hr = WalkDesiredElementBuildCache(
+			hMainWnd,
+			20,
+			pElement,
+			pTotalCondition,
+			pCacheRequest,
+			NULL,
+			pElementVec.get()
+		);
+
+		
+		return pElementVec;
+	}
+	catch (_com_error err) {
+	}
+	return nullptr;
+}
+/**
 * @brief: check whether focus on edit control.(not always works.)
 *
 * @param: 
 *
 * @return: bool: if focus on edit control, return true. else false.
 */
-bool isFocusOnEdit() {
+bool isFocusOnEdit(HWND hMainWnd) {
+	KeyMouse::Context *pCtx = GetContext(hMainWnd);
+	IUIAutomation* pAutomation = pCtx->GetAutomation();
     if(pAutomation == nullptr)
         return false;
     try {
