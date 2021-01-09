@@ -1,5 +1,4 @@
 #include "stdafx.h"
-#include "UIAHandler.h"
 #include "ctx.h"
 #include "utils.h"
 
@@ -50,7 +49,7 @@ HRESULT STDMETHODCALLTYPE CacheEventHandler::HandleStructureChangedEvent(IUIAuto
 		case UIA_BoundingRectanglePropertyId:
 		case UIA_IsOffscreenPropertyId: {
 			Context *pCtx = reinterpret_cast<Context *>(GetClassLongPtr(hMainWnd_, 0));
-			pCtx->SetCacheExpiredState(true);
+			//pCtx->SetCacheExpiredState(true);
 			break;
 		}
 	

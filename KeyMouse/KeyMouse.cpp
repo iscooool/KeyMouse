@@ -88,7 +88,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY);
 	//hr = InitializeUIAutomation(&pAutomation);
     std::unique_ptr<KeyMouse::Context> pCtx(new KeyMouse::Context());
-	pCtx->InitTimer(hWnd);
+	if (pCtx->GetProfile().enable_cache) {
+		pCtx->InitTimer(hWnd);
+	}
 	g_hMainWndForHook = hWnd;
 
 	HINSTANCE hNullInstance = GetModuleHandle(NULL);

@@ -1,6 +1,5 @@
 #include"stdafx.h"
-#include"hotkey_handler.h"
-#include "wndproc_handler.h"
+#include "hotkey_handler.h"
 #include"KeyMouse.h"
 #include "utils.h"
 namespace KeyMouse {

@@ -3,6 +3,9 @@
 
 ![demo](https://i.imgur.com/HxaxNYu.gif)
 
+## Installation
+Download the zip file in release page and unzip it.
+
 ## Usage
 
 - Select mode: Press <kbd>Alt</kbd> + <kbd>;</kbd> to enter select mode, then press tag to select item. If you hit `rightClickPrefix` before hitting tag, KeyMouse will simulate right click instead.
@@ -11,6 +14,7 @@
 - Disable: Press <kbd>Alt</kbd> + <kbd>[</kbd> to enable/disable the program.
 - Scroll down: Press <kbd>Alt</kbd> + <kbd>J</kbd>.
 - Scroll up: Press <kbd>Alt</kbd> + <kbd>K</kbd>.
+- Force not use cache: When `enableCache` is `true` and you're in `select mode`. Press <kbd>space</kbd> to force not use cache.
 
 > if KeyMouse doesn't work, try to run as Administrator.
 
@@ -30,7 +34,8 @@
         "opacity": 70,
         "invertClickType": false,
         "onlyForeWindow": true,
-        "enableWindowSwitching": true
+        "enableWindowSwitching": true,
+        "enableCache": false
     },
     "keybindings":
     {
@@ -41,7 +46,8 @@
         "escape": "esc",
         "fastSelectMode": "alt+i",
         "rightClickPrefix": "shift+a",
-        "singleClickPrefix": "shift+s"
+        "singleClickPrefix": "shift+s",
+        "forceNotUseCache": "space"
     }
 }
 ```
@@ -63,6 +69,7 @@ The options of profile is listed below:
 | invertClickType| bool| `false`| When it's true, KeyMouse will use right click as main click.|
 | onlyForeWindow| bool| `true`| When using multiple monitors, only enumerate hints on foreground window. If setting to false, It will try to enumerate windows on other monitors(might be slow.)|
 | enableWindowSwitching| bool| `true`| Window switching feature may cause a high delay on some Windows versions.|
+| enableCache| bool| `false`| (experimental) Try to cache the target window's hints when it's possible. (target window may be frozen if it's hint-intensive.)|
 
 The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`.
 
@@ -75,9 +82,10 @@ The option of hot keys is listed below:
 | scrollDown| string| `j`| Scroll down.|
 | selectMode| string| `alt+;`| Enter select mode.|
 | fastSelectMode| string| `alt+j`| Enter fast select mode. the difference between select mode and fast select mode is that FSM will continually enter select mode. may fail in some situations.|
-|escape| string| `esc`| Leave select mode.|
-|rightClickPrefix| string| `shift+a`| When you're in select mode. Hitting `rightClickPrefix` before hitting tag will simulate right click instead.|
-|singleClickPrefix| string| `shift+s`| When you're in select mode. Hitting `singleClickPrefix` before hitting tag will simulate single click instead.|
+| escape| string| `esc`| Leave select mode.|
+| rightClickPrefix| string| `shift+a`| When you're in select mode. Hitting `rightClickPrefix` before hitting tag will simulate right click instead.|
+| singleClickPrefix| string| `shift+s`| When you're in select mode. Hitting `singleClickPrefix` before hitting tag will simulate single click instead.|
+| forceNotUseCache| string| `space`| When `enableCache` is `true` and you're in select mode. Hitting `forceNotUseCache` will retrieve hints directly instead of using cache.|
 
 
 ## Build

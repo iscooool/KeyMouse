@@ -45,9 +45,6 @@
     <ClInclude Include="hotkey_handler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="wndproc_handler.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="UIAHandler.h">
       <Filter>Header Files</Filter>
     </ClInclude>

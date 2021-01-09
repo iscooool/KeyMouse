@@ -11,7 +11,8 @@
         "opacity": 70,
         "invertClickType": false,
         "onlyForeWindow": true,
-        "enableWindowSwitching": true
+        "enableWindowSwitching": true,
+        "enableCache": true
     },
     "keybindings":
     {

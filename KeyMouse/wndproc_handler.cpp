@@ -1,11 +1,9 @@
 #include "stdafx.h"
-#include "wndproc_handler.h"
 #include "ctx.h"
+#include "Resource.h"
 #include "utils.h"
 #include "hotkey_handler.h"
 #include "def.h"
-
-
 namespace KeyMouse {
 HKBinding WndProcHandler::select_hkbinding_[WndProcHandler::SELECT_HKBINDING_NUM] = {};
 HKBinding WndProcHandler::normal_hkbinding_[WndProcHandler::NORMAL_HKBINDING_NUM] = {};
@@ -43,6 +41,8 @@ void WndProcHandler::InitialHKBinding(KeybindingMap& keybinding_map) {
 	select_hkbinding_[1].fnPtr = fnHKProc_RightClickPrefix_;
 	select_hkbinding_[2].lParam = keybinding_map["singleClickPrefix"].lParam;
 	select_hkbinding_[2].fnPtr = fnHKProc_SingleClickPrefix_;
+	select_hkbinding_[3].lParam = keybinding_map["forceNotUseCache"].lParam;
+	select_hkbinding_[3].fnPtr = fnHKProc_ForceNotUseCache_;
 
 	normal_hkbinding_[0].lParam = keybinding_map["selectMode"].lParam;
 	normal_hkbinding_[0].fnPtr = fnHKProc_SelectMode_;
@@ -139,7 +139,7 @@ LRESULT WndProcHandler::fnWndProc_Tray_(const WndEventArgs& Wea) {
 				SetMenuItemInfo(hSubMenu, ID_TRAYMENU_DISABLE, false,
 						&MenuItemInfo);
 
-				// SetForegroundWindow(Wea.hWnd);
+				SetForegroundWindow(Wea.hWnd);
 				int cmd = TrackPopupMenu(hSubMenu, TPM_RETURNCMD,
 										 pt.x, pt.y, NULL, Wea.hWnd, NULL);
 				if(cmd == ID_TRAYMENU_EXIT)
@@ -164,6 +164,7 @@ LRESULT WndProcHandler::fnWndProc_Tray_(const WndEventArgs& Wea) {
 	}
 	return 0;
 }
+
 LRESULT WndProcHandler::fnWndProc_Hotkey_(const WndEventArgs& Wea) {
 	Context *pCtx = GetContext(Wea.hWnd);
 
@@ -192,6 +193,7 @@ LRESULT WndProcHandler::fnWndProc_Hotkey_(const WndEventArgs& Wea) {
 
 	 return 0;
 }
+
 LRESULT WndProcHandler::fnWndProc_Paint_(const WndEventArgs& Wea) {
 	PAINTSTRUCT ps;
 	HDC hdc = BeginPaint(Wea.hWnd, &ps);
@@ -199,10 +201,12 @@ LRESULT WndProcHandler::fnWndProc_Paint_(const WndEventArgs& Wea) {
 	EndPaint(Wea.hWnd, &ps);
 	return 0;
 }
+
 LRESULT WndProcHandler::fnWndProc_Destroy_(const WndEventArgs& Wea) {
 	PostQuitMessage(0);
 	return 0;
 }
+
 LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
 	Context *pCtx = GetContext(Wea.hWnd);
 
@@ -220,10 +224,14 @@ LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
 
 	CreateTransparentWindow(Wea.hInst, Wea.hWnd);
 
+	if (pCtx->GetProfile().enable_cache) {
+		RegCustomHotKey(Wea.hWnd, "forceNotUseCache");
+	}
 	RegCustomHotKey(Wea.hWnd, "escape");
 	RegisterTagHotKey(Wea.hWnd);
 	return 0;
 }
+
 LRESULT WndProcHandler::fnHKProc_FastSelectMode_(const WndEventArgs& Wea) {
 	Context *pCtx = GetContext(Wea.hWnd);
 	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
@@ -313,6 +321,16 @@ LRESULT WndProcHandler::fnHKProc_Scroll_(const WndEventArgs& Wea) {
 	}
 	return 0;
 }
+
+LRESULT WndProcHandler::fnHKProc_ForceNotUseCache_(const WndEventArgs& Wea) {
+	Context *pCtx = GetContext(Wea.hWnd);
+	EscSelectMode_(Wea.hWnd);
+	pCtx->SetEnableCache(false);
+	fnHKProc_SelectMode_(Wea);
+	pCtx->SetEnableCache(true);
+	return 0;
+}
+
 void WndProcHandler::EscSelectMode_(HWND hWnd) {
 	Context *pCtx = GetContext(hWnd);
 
@@ -324,6 +342,9 @@ void WndProcHandler::EscSelectMode_(HWND hWnd) {
     DestroyWindow(handle);
 
 
+	if (pCtx->GetProfile().enable_cache) {
+		UnregCustomHotKey(hWnd, "forceNotUseCache");
+	}
 	UnregCustomHotKey(hWnd, "escape");
     UnregisterTagHotKey(hWnd);
 
@@ -359,10 +380,10 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
 	HWND TransWindow = pCtx->GetTransWindow();
 
     if(pTagMap->find(szTag) != pTagMap->end()) {
-        CComPtr<IUIAutomationElement> pElement = (*pTagMap)[szTag];
+        KeyMouse::ElementInfo pElement = (*pTagMap)[szTag];
 
-		RECT Rect;
-		pElement->get_CachedBoundingRectangle(&Rect);
+		RECT Rect = pElement.rect;
+		// pElement->get_CachedBoundingRectangle(&Rect);
 
 		Rect = RectForPerMonitorDPI(TransWindow, Rect);
 		if (pCtx->GetClickType() == Context::SINGLE_RIGHT_CLICK) {
@@ -381,8 +402,12 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
         EscSelectMode_(hWnd);
 	}
 	else if (pWindowMap->find(szTag) != pWindowMap->end()) { // switch window.
-        CComPtr<IUIAutomationElement> pElement = (*pWindowMap)[szTag];
-		pElement->SetFocus();
+		IUIAutomation* pAutomation = pCtx->GetAutomation();
+        KeyMouse::ElementInfo pElement = (*pWindowMap)[szTag];
+		IUIAutomationElement* pTempElement;
+		pAutomation->ElementFromHandle(pElement.handle, &pTempElement);
+		pTempElement->SetFocus();
+		pTempElement->Release();
 	}
     if(iMaxTagLen <= szTag.length())
         EscSelectMode_(hWnd);
@@ -486,22 +511,20 @@ void WndProcHandler::RightClick_(int x, int y, int time)
 	SendInput(1, &Input, sizeof(INPUT));
 }
 void WndProcHandler::InvokeElement_(
-	CComPtr<IUIAutomationElement> &pElement,
+	KeyMouse::ElementInfo &pElement,
 	HWND hWnd) {
     try {
-        CONTROLTYPEID iControlType;
-        HRESULT hr = pElement->get_CachedControlType(&iControlType); 
-        throw_if_fail(hr); 
+        CONTROLTYPEID iControlType = pElement.control_type;
 		Context *pCtx = GetContext(hWnd);
 		HWND TransWindow = pCtx->GetTransWindow();
 
-        if(iControlType == UIA_ButtonControlTypeId) {
+        if(iControlType == UIA_ButtonControlTypeId ||
+			iControlType == UIA_HyperlinkControlTypeId) {
 
             // Sometimes the ClickablePoint is not actually clickable, but
             // bClickable equals 1. 
             
-			RECT Rect;
-			pElement->get_CachedBoundingRectangle(&Rect);
+			RECT Rect = pElement.rect;
 			
 			Rect = RectForPerMonitorDPI(TransWindow, Rect);
 			if (pCtx->GetClickType() == Context::LEFT_CLICK) {
@@ -513,8 +536,7 @@ void WndProcHandler::InvokeElement_(
 					(Rect.top + Rect.bottom) / 2, 1);
 			}
         } else {
-			RECT Rect;
-			pElement->get_CachedBoundingRectangle(&Rect);
+			RECT Rect = pElement.rect;
 			Rect = RectForPerMonitorDPI(TransWindow, Rect);
 			if (pCtx->GetClickType() == Context::LEFT_CLICK) {
 				LeftClick_((Rect.left + Rect.right) / 2,

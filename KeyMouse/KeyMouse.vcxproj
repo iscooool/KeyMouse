@@ -164,7 +164,6 @@
     <ClInclude Include="targetver.h" />
     <ClInclude Include="UIAHandler.h" />
     <ClInclude Include="utils.h" />
-    <ClInclude Include="wndproc_handler.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ctx.cpp" />

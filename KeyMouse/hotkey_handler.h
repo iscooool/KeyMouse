@@ -37,6 +37,7 @@
 #define  FASTSELECTMODE 32
 #define  RIGHTCLICKPREFIX 33
 #define  SINGLELEFTCLICKPREFIX 34
+#define  FORCENOTUSECACHE 35
 namespace KeyMouse {
 BOOL RegCustomHotKey(HWND hWnd, std::string key);
 BOOL UnregCustomHotKey(HWND hWnd, std::string key);

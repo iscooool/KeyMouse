@@ -1,8 +1,8 @@
 #pragma once
 #include "stdafx.h"
+#include "def.h"
 #include<queue>
 #include<tchar.h>
-#include "def.h"
 namespace KeyMouse {
     
 class TagCreator

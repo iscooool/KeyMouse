@@ -1,9 +1,9 @@
 #include <sstream>
 #include "stdafx.h"
 #include "ctx.h"
+
 #include "hotkey_handler.h"
 #include "utils.h"
-
 namespace KeyMouse {
 const int MAX_PATH_LEN = 200;
 // split std::string by delim.
@@ -138,7 +138,8 @@ std::map<std::string, int> Config::command_id_map_{
 	{"escape", CLEANTAG},
 	{"fastSelectMode", FASTSELECTMODE},
 	{"rightClickPrefix", RIGHTCLICKPREFIX},
-	{"singleClickPrefix", SINGLELEFTCLICKPREFIX}
+	{"singleClickPrefix", SINGLELEFTCLICKPREFIX},
+	{"forceNotUseCache", FORCENOTUSECACHE}
 };
 Config::Config() {
 
@@ -160,7 +161,8 @@ Config::Config(const std::wstring& json_name) {
 			{"opacity", 100},
 			{"invertClickType", false},
 			{"onlyForeWindow", true},
-			{"enableWindowSwitching", true}
+			{"enableWindowSwitching", true},
+			{"enableCache", false}
 		}},
 		{"keybindings", {
 			{"toggleEnable", "alt+["},
@@ -170,7 +172,8 @@ Config::Config(const std::wstring& json_name) {
 			{"escape", "esc"},
 			{"fastSelectMode", "alt+j"},
 			{"rightClickPrefix", "shift+a"},
-			{"singleClickPrefix", "shift+s"}
+			{"singleClickPrefix", "shift+s"},
+			{"forceNotUseCache", "space"}
 		}}
 		});
 	if (!LoadJson(json_name)) {
@@ -335,12 +338,28 @@ Profile Config::ExtractProfile() {
 	profile.invert_click_type = profile_json["invertClickType"].get<bool>();
 	profile.only_forewindow = profile_json["onlyForeWindow"].get<bool>();
 	profile.enable_window_switching = profile_json["enableWindowSwitching"].get<bool>();
+	profile.enable_cache = profile_json["enableCache"].get<bool>();
 
 	return profile;
 }
 
 //------------------------------------------------------------------------
-Context::Context() {
+Context::Context() : 
+	wndProc_handler_(WndProcHandler()),
+    current_tag_(string(TEXT(""))),
+	tag_map_(PTagMap()),
+    enable_state_(true),
+	on_fast_select_mode_(false),
+	mode_(NORMAL_MODE),
+	is_cache_expired_(false),
+	cache_expired_count_(0),
+	cache_expired_struct_changed_(false),
+	last_input_tick_(0),
+	last_cache_tick_(0),
+	cache_window_mtx_(),
+	cache_window_cv_(),
+	doing_caching_(false) {
+
 	app_directory_ = AppDir();
 	SetCurrentDirectory(app_directory_.c_str());
 
@@ -355,25 +374,15 @@ Context::Context() {
 		CLSCTX_INPROC_SERVER, IID_IUIAutomation,
 		reinterpret_cast<void**>(&automation_));
 
-	wndProc_handler_ = WndProcHandler();
 	event_handlers_.reset(new std::map<HWND, std::vector<CComPtr<IUnknown>>>);
 	wndProc_handler_.InitialHKBinding(keybinding_map_);
-    current_tag_ = string(TEXT(""));
-	tag_map_ = PTagMap();
 	cache_window_.reset(new std::map<HWND, std::map<std::string, PElementVec>>);
-    enable_state_ = true;
-	on_fast_select_mode_ = false;
 	if (profile_.invert_click_type) {
 		click_type_ = RIGHT_CLICK;
 	}
 	else {
 		click_type_ = LEFT_CLICK;
 	}
-	mode_ = NORMAL_MODE;
-	is_cache_expired_ = false;
-	cache_expired_struct_changed_ = false;
-	last_input_tick_ = 0;
-	last_cache_tick_ = 0;
 }
 
 Context::~Context() {
@@ -426,6 +435,22 @@ bool Context::DeleteRegistryRUN_()
 void Context::InitTimer(HWND hwnd) {
 	timer_.reset(new TimedExecution(CacheThread, std::chrono::milliseconds(1), hwnd));
 }
+
+void Context::WaitForCacheWindow() {
+	std::unique_lock<std::mutex> lck(cache_window_mtx_);
+	cache_window_cv_.wait(lck, [this] { return !doing_caching_; });
+}
+void Context::LockCacheWindow() {
+	doing_caching_ = true;
+	cache_window_mtx_.lock();
+}
+
+void Context::UnlockCacheWindow() {
+	cache_window_mtx_.unlock();
+	doing_caching_ = false;
+	cache_window_cv_.notify_one();
+}
+
 const  WndProcHandler& Context::GetWndProcHandler() const {
     return wndProc_handler_;
 }
@@ -526,6 +551,13 @@ const bool &Context::GetEnableState() const {
     return enable_state_;
 }
 
+void Context::SetEnableCache(const bool stat) {
+	profile_.enable_cache = stat;
+}
+const bool &Context::GetEnableCache() const {
+	return profile_.enable_cache;
+}
+
 void Context::SetFastSelectState(const bool flag) {
 	on_fast_select_mode_ = flag;
 }
@@ -565,6 +597,14 @@ const Context::Mode &Context::GetMode() const {
 }
 
 void Context::SetCacheExpiredState(const bool stat) {
+	if (!stat) {
+		cache_expired_count_ = 0;
+		last_input_tick_ = 0;
+	}
+	else {
+		cache_expired_count_++;
+		last_input_tick_ = GetTickCount();
+	}
 	is_cache_expired_ = stat;
 }
 
@@ -602,5 +642,11 @@ void Context::SetCacheWindow(PCacheWindow& cache_window) {
 
 const PCacheWindow& Context::GetCacheWindow() const {
 	return cache_window_;
+}
+const bool &Context::GetDoingCachingState() const {
+	return doing_caching_;
+}
+void Context::SetDoingCachingState(const bool state) {
+	doing_caching_ = state;
 }
 }
