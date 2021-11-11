@@ -10,9 +10,7 @@
 // user defined message.
 #define WM_TRAY WM_USER + 1
 
-// user defined virtual key mapping.
-#define KM_SCROLLDOWN 0x4A  // J
-#define KM_SCROLLUP 0x4B    // K
+
 using json = nlohmann::json;
 
 namespace KeyMouse {
@@ -72,12 +70,13 @@ public:
 	static LRESULT fnHKProc_SingleClickPrefix_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_Escape_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_ToggleEnable_(const WndEventArgs& Wea);
-	static LRESULT fnHKProc_Scroll_(const WndEventArgs& Wea);
+	static LRESULT fnHKProc_Scroll_Up_(const WndEventArgs& Wea);
+	static LRESULT fnHKProc_Scroll_Down_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_ForceNotUseCache_(const WndEventArgs& Wea);
 
 	static void EscSelectMode_(HWND hWnd);
 	static void SelectModeHandler_(HWND hWnd, WORD VirtualKey);
-	static void ScrollHandler_(HWND hWnd, WORD VirtualKey);
+	static void ScrollHandler_(HWND hWnd, bool Up);
 	static void LeftClick_(int x, int y, int time);
 	static void RightClick_(int x, int y, int time);
 	static void InvokeElement_(KeyMouse::ElementInfo &pElement, HWND hWnd);

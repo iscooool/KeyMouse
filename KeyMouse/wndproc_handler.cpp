@@ -49,9 +49,9 @@ void WndProcHandler::InitialHKBinding(KeybindingMap& keybinding_map) {
 	normal_hkbinding_[1].lParam = keybinding_map["toggleEnable"].lParam;
 	normal_hkbinding_[1].fnPtr = fnHKProc_ToggleEnable_;
 	normal_hkbinding_[2].lParam = keybinding_map["scrollDown"].lParam;
-	normal_hkbinding_[2].fnPtr = fnHKProc_Scroll_;
+	normal_hkbinding_[2].fnPtr = fnHKProc_Scroll_Down_;
 	normal_hkbinding_[3].lParam = keybinding_map["scrollUp"].lParam;
-	normal_hkbinding_[3].fnPtr = fnHKProc_Scroll_;
+	normal_hkbinding_[3].fnPtr = fnHKProc_Scroll_Up_;
 	normal_hkbinding_[4].lParam = keybinding_map["fastSelectMode"].lParam;
 	normal_hkbinding_[4].fnPtr = fnHKProc_FastSelectMode_;
 
@@ -310,14 +310,28 @@ LRESULT WndProcHandler::fnHKProc_ToggleEnable_(const WndEventArgs& Wea) {
 
 	return 0;
 }
-LRESULT WndProcHandler::fnHKProc_Scroll_(const WndEventArgs& Wea) {
+
+
+LRESULT WndProcHandler::fnHKProc_Scroll_Up_(const WndEventArgs& Wea) {
 	WORD VirtualKey = HIWORD(Wea.lParam);
 	if (isFocusOnEdit(Wea.hWnd)) {
 		EditInputForward_(Wea.hWnd, VirtualKey);
 	}
 	else {
 		HWND handle = GetForegroundWindow();
-		ScrollHandler_(handle, VirtualKey);
+		ScrollHandler_(handle, true);
+	}
+	return 0;
+}
+
+LRESULT WndProcHandler::fnHKProc_Scroll_Down_(const WndEventArgs& Wea) {
+	WORD VirtualKey = HIWORD(Wea.lParam);
+	if (isFocusOnEdit(Wea.hWnd)) {
+		EditInputForward_(Wea.hWnd, VirtualKey);
+	}
+	else {
+		HWND handle = GetForegroundWindow();
+		ScrollHandler_(handle, false);
 	}
 	return 0;
 }
@@ -413,33 +427,25 @@ void WndProcHandler::SelectModeHandler_(HWND hWnd, WORD VirtualKey) {
         EscSelectMode_(hWnd);
 }
 
-void WndProcHandler::ScrollHandler_(HWND hWnd, WORD VirtualKey) {
-    switch (VirtualKey) {
-        case KM_SCROLLUP:
-        case KM_SCROLLDOWN:
-            {
-                GUITHREADINFO gti;
-                gti.cbSize = sizeof(GUITHREADINFO);
-                GetGUIThreadInfo(NULL, &gti);
-                HWND hWindowToScroll = gti.hwndFocus;
-				RECT r;
-				GetClientRect(hWnd, &r);
-                int iDirection = 0;
-                if(VirtualKey == KM_SCROLLDOWN)
-                    iDirection = -1;
-                else if (VirtualKey == KM_SCROLLUP)
-                    iDirection = 1;
+void WndProcHandler::ScrollHandler_(HWND hWnd, bool Up) {
+    
+	GUITHREADINFO gti;
+	gti.cbSize = sizeof(GUITHREADINFO);
+	GetGUIThreadInfo(NULL, &gti);
+	HWND hWindowToScroll = gti.hwndFocus;
+	RECT r;
+	GetClientRect(hWnd, &r);
+	int iDirection = 0;
+    if(Up)
+		iDirection = 1;
+    else
+		iDirection = -1;
                 
-				SendMessage(hWindowToScroll, WM_MOUSEWHEEL, 
-                        MAKEWPARAM(0, WHEEL_DELTA * iDirection), 
-                        MAKELPARAM(r.right / 2, r.bottom / 2));
+	SendMessage(hWindowToScroll, WM_MOUSEWHEEL, 
+        MAKEWPARAM(0, WHEEL_DELTA * iDirection), 
+        MAKELPARAM(r.right / 2, r.bottom / 2));
 
-            }
-            break;
-        default:
-            {
-            }
-    }
+        
 }
 void WndProcHandler::LeftClick_(int x, int y, int time)
 {
