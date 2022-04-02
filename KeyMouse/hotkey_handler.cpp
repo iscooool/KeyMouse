@@ -7,6 +7,9 @@ BOOL RegCustomHotKey(HWND hWnd, std::string key) {
 	Context *pCtx = GetContext(hWnd);
 	KeybindingMap keybinding_map = pCtx->GetKeybindingMap();
 	int id = keybinding_map[key].id;
+	// don't register when hotkey is disabled.
+	if (id == DISABLED)
+		return TRUE;
 	UINT fsModifiers = LOWORD(keybinding_map[key].lParam);
 	UINT vk = HIWORD(keybinding_map[key].lParam);
 	return RegisterHotKey(hWnd, id, fsModifiers, vk);
@@ -25,12 +28,14 @@ BOOL RegisterAllHotKey(HWND hWnd, bool exclude_toggle) {
 		flag = RegCustomHotKey(hWnd, "toggleEnable");
 		auto str = GetLastErrorAsString();
 	}
+
 	return (
 		flag &&
 		RegCustomHotKey(hWnd, "selectMode") &&
 		RegCustomHotKey(hWnd, "scrollUp") &&
 		RegCustomHotKey(hWnd, "scrollDown") &&
-		RegCustomHotKey(hWnd, "fastSelectMode")
+		RegCustomHotKey(hWnd, "fastSelectMode") &&
+		RegCustomHotKey(hWnd, "selectModeSingle")
 		);
 }
 BOOL RegisterTagHotKey(HWND hWnd) {
@@ -79,7 +84,8 @@ BOOL UnregisterAllHotKey(HWND hWnd, bool exclude_toggle) {
 		UnregCustomHotKey(hWnd, "selectMode") &&
 		UnregCustomHotKey(hWnd, "scrollUp") &&
 		UnregCustomHotKey(hWnd, "scrollDown") &&
-		UnregCustomHotKey(hWnd, "fastSelectMode")
+		UnregCustomHotKey(hWnd, "fastSelectMode") &&
+		UnregCustomHotKey(hWnd, "selectModeSingle")
 		);
 }
 BOOL UnregisterTagHotKey(HWND hWnd) {

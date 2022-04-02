@@ -47,7 +47,8 @@ Download the zip file in release page and unzip it.
         "fastSelectMode": "alt+i",
         "rightClickPrefix": "shift+a",
         "singleClickPrefix": "shift+s",
-        "forceNotUseCache": "space"
+        "forceNotUseCache": "space",
+        "selectModeSingle": "disabled"
     }
 }
 ```
@@ -71,7 +72,7 @@ The options of profile is listed below:
 | enableWindowSwitching| bool| `true`| Window switching feature may cause a high delay on some Windows versions.|
 | enableCache| bool| `false`| (experimental) Try to cache the target window's hints when it's possible. (target window may be frozen if it's hint-intensive.)|
 
-The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`.
+The hot keys support `alt`, `shift`, `ctrl`, `win` and most keys on the keyboard. Please use lowercase and use `+` to connect different keys. some typical keybings: `alt+j`, `shift+alt+j`, `f11`. You can also use `disabled` to disable hot key.
 
 The option of hot keys is listed below:
 
@@ -86,6 +87,7 @@ The option of hot keys is listed below:
 | rightClickPrefix| string| `shift+a`| When you're in select mode. Hitting `rightClickPrefix` before hitting tag will simulate right click instead.|
 | singleClickPrefix| string| `shift+s`| When you're in select mode. Hitting `singleClickPrefix` before hitting tag will simulate single click instead.|
 | forceNotUseCache| string| `space`| When `enableCache` is `true` and you're in select mode. Hitting `forceNotUseCache` will retrieve hints directly instead of using cache.|
+| selectModeSingle| string| `disabled`| Select Mode using single left click.|
 
 
 ## Build

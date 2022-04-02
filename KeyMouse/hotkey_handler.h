@@ -1,6 +1,7 @@
 #pragma once
 #include"stdafx.h"
 
+#define DISABLED 0
 // hotkeys' ID.
 #define  HOTKEY_A   1
 #define  HOTKEY_B   2
@@ -38,6 +39,8 @@
 #define  RIGHTCLICKPREFIX 33
 #define  SINGLELEFTCLICKPREFIX 34
 #define  FORCENOTUSECACHE 35
+#define  SELECTMODESINGLE 36
+
 namespace KeyMouse {
 BOOL RegCustomHotKey(HWND hWnd, std::string key);
 BOOL UnregCustomHotKey(HWND hWnd, std::string key);

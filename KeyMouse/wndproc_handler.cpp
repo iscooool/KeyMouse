@@ -54,6 +54,8 @@ void WndProcHandler::InitialHKBinding(KeybindingMap& keybinding_map) {
 	normal_hkbinding_[3].fnPtr = fnHKProc_Scroll_Up_;
 	normal_hkbinding_[4].lParam = keybinding_map["fastSelectMode"].lParam;
 	normal_hkbinding_[4].fnPtr = fnHKProc_FastSelectMode_;
+	normal_hkbinding_[5].lParam = keybinding_map["selectModeSingle"].lParam;
+	normal_hkbinding_[5].fnPtr = fnHKProc_SelectModeSingle_;
 
 }
 
@@ -184,7 +186,7 @@ LRESULT WndProcHandler::fnWndProc_Hotkey_(const WndEventArgs& Wea) {
 			}
 		}
 
-		// default operation. when A <= virtualkey <= Z
+		// default operation which will consume all hotkeys about tags on the screen. when A <= virtualkey <= Z
 		WORD VirtualKey = HIWORD(Wea.lParam);
 		SelectModeHandler_(Wea.hWnd, VirtualKey);
 
@@ -221,7 +223,7 @@ LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
 	CompareBlackList_();
 
 	pCtx->SetMode(Context::SELECT_MODE);
-
+	// this will show all tags on the screen.
 	CreateTransparentWindow(Wea.hInst, Wea.hWnd);
 
 	if (pCtx->GetProfile().enable_cache) {
@@ -229,6 +231,12 @@ LRESULT WndProcHandler::fnHKProc_SelectMode_(const WndEventArgs& Wea) {
 	}
 	RegCustomHotKey(Wea.hWnd, "escape");
 	RegisterTagHotKey(Wea.hWnd);
+	return 0;
+}
+
+LRESULT WndProcHandler::fnHKProc_SelectModeSingle_(const WndEventArgs& Wea) {
+	fnHKProc_SelectMode_(Wea);
+	fnHKProc_SingleClickPrefix_(Wea);
 	return 0;
 }
 
@@ -366,6 +374,7 @@ void WndProcHandler::EscSelectMode_(HWND hWnd) {
     pCtx->SetMaxTagLen(0);
     pCtx->SetMode(Context::NORMAL_MODE);
 	auto profile = pCtx->GetProfile();
+	//	clear click type.
 	if (profile.invert_click_type) {
 		pCtx->SetClickType(Context::RIGHT_CLICK);
 	}

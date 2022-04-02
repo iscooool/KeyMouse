@@ -139,7 +139,8 @@ std::map<std::string, int> Config::command_id_map_{
 	{"fastSelectMode", FASTSELECTMODE},
 	{"rightClickPrefix", RIGHTCLICKPREFIX},
 	{"singleClickPrefix", SINGLELEFTCLICKPREFIX},
-	{"forceNotUseCache", FORCENOTUSECACHE}
+	{"forceNotUseCache", FORCENOTUSECACHE},
+	{"selectModeSingle", SELECTMODESINGLE}
 };
 Config::Config() {
 
@@ -173,7 +174,8 @@ Config::Config(const std::wstring& json_name) {
 			{"fastSelectMode", "alt+j"},
 			{"rightClickPrefix", "shift+a"},
 			{"singleClickPrefix", "shift+s"},
-			{"forceNotUseCache", "space"}
+			{"forceNotUseCache", "space"},
+			{"selectModeSingle", "disabled"}
 		}}
 		});
 	if (!LoadJson(json_name)) {
@@ -267,6 +269,9 @@ LPARAM Config::ExtractSingleKeyBinding_(std::string key, std::string binding) {
 	std::vector<std::string> split_keys = split(binding, '+');
 	WORD lo = 0;
 	WORD hi = 0;
+	if (binding == "disabled")
+		return MAKELPARAM(lo, hi);
+
 	for (auto& key_str : split_keys) {
 		auto search = lo_map_.find(key_str);
 		if (search != lo_map_.end()) {
@@ -302,12 +307,17 @@ KeybindingMap Config::ExtractKeyBinding() {
 
 		auto key = keybinding.key();
 		if (command_id_map_.find(key) != command_id_map_.end()) {
+			if (str == "disabled") {
+				IdlParam id_lParam = { DISABLED, lp };
+				keybinding_map.insert(
+					std::pair<std::string, IdlParam>(keybinding.key(), id_lParam)
+				);
+			}
 			IdlParam id_lParam = { command_id_map_[key], lp};
 			keybinding_map.insert(
 				std::pair<std::string, IdlParam>(keybinding.key(), id_lParam)
 			);
-		}
-		else {
+		} else {
 			if (!has_error_) {		// only warn user one time.
 				has_error_ = true;
 				std::wstring temp = Str2Wstr(key);

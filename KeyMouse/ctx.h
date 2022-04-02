@@ -20,7 +20,7 @@ struct ElementInfo {
 	CONTROLTYPEID control_type;
 };
 struct IdlParam{
-	// id is used for RegisterHotKey.
+	// id is used for RegisterHotKey. defined in command_id_map_.
 	int id;
 	LPARAM lParam;
 };
@@ -53,7 +53,7 @@ class WndProcHandler
 public:
 	static constexpr int EVENTHANDLER_NUM = 5;
 	static constexpr int SELECT_HKBINDING_NUM = 4;
-	static constexpr int NORMAL_HKBINDING_NUM = 5;
+	static constexpr int NORMAL_HKBINDING_NUM = 6;
 
 	WndProcHandler();
 	~WndProcHandler();
@@ -65,6 +65,7 @@ public:
 	static LRESULT fnWndProc_Paint_(const WndEventArgs& Wea);
 	static LRESULT fnWndProc_Destroy_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_SelectMode_(const WndEventArgs& Wea);
+	static LRESULT fnHKProc_SelectModeSingle_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_FastSelectMode_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_RightClickPrefix_(const WndEventArgs& Wea);
 	static LRESULT fnHKProc_SingleClickPrefix_(const WndEventArgs& Wea);
